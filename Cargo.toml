@@ -1,0 +1,23 @@
+[package]
+name = "evorule-bundle"
+version = "0.2.1"
+edition = "2021"
+description = "EvoRule snapshot bundle (DatasetBundle) self-contained validation — shared by governance (evorule-rule) and execution (evorule-server)"
+license = "Apache-2.0"
+rust-version = "1.74"
+repository = "https://gitee.com/evorule/evorule-bundle"
+homepage = "https://gitee.com/evorule/evorule-bundle"
+readme = "README.md"
+
+# 纯 lib：无 bin / 无服务 / 无 I/O。快照包自洽校验 + 版本模型 + 依赖/溯源模型（SSOT 单一来源）
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+# 发布到 crates.io 必须用 crates.io 版本依赖（path 依赖不允许发布）
+# 本地开发如需覆盖，在消费方 Cargo.toml 用 [patch.crates-io] 指向本地 path
+evorule-hash = "0.1.0"
+
+[dev-dependencies]
+
+[workspace]
