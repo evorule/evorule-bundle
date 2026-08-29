@@ -23,6 +23,7 @@ use thiserror::Error;
 use crate::dependency::{DataDependencies, SourceBinding};
 use crate::provenance::Provenance;
 use crate::resolve::{ResolveError, VersionResolver};
+use crate::structure::validate_rule_structure;
 use crate::symbols::{has_dynamic_service_ref, io_services_from_rule_body};
 use crate::version::{
     LawRef, VersionError, VersionSelection, VersionSelectionMode, Versioning,
@@ -45,6 +46,9 @@ pub enum BundleError {
 
     #[error("绑定服务 `{service}` 未在 rule_body 的 io_request 中出现（规则体无此符号引用）")]
     ServiceNotInRuleBody { service: String },
+
+    #[error("条目 `{entry}` rule_body 结构非法（引擎原生 transform 形态）: {errors:?}")]
+    InvalidEntryStructure { entry: String, errors: Vec<String> },
 
     #[error("auto_by_effective_date 模式需快照包携带 law_ref.effective_from 作为生效基准")]
     MissingEffectiveBase,
@@ -235,28 +239,14 @@ impl BundleImporter {
         bundle.verify_content_hash()?;
         // 3 版本链完整性（防损坏版本链被导入）
         bundle.dataset.versioning.validate()?;
-        // 4 符号三方一致（31 号 §9-3）：rule_body ≡ 条目 dependencies ≡ data_dependencies
+        // 4 符号三方一致 + 条目结构（SSOT: validate_entry，治理侧入库门禁同口径）
         let declared: Vec<String> = bundle
             .data_dependencies
             .as_ref()
             .map(|d| d.services.iter().map(|s| s.service_name.clone()).collect())
             .unwrap_or_default();
         for entry in &bundle.entries {
-            // 动态 service 引用（__exec__.instruction.params.*）→ 运行时解析，body 字面量不参与匹配
-            let has_dynamic = has_dynamic_service_ref(&entry.rule_body);
-            let body_services = io_services_from_rule_body(&entry.rule_body);
-            for dep in &entry.dependencies {
-                if !declared.contains(&dep.service_name) {
-                    return Err(BundleError::ServiceNotDeclared {
-                        service: dep.service_name.clone(),
-                    });
-                }
-                if !has_dynamic && !body_services.contains(&dep.service_name) {
-                    return Err(BundleError::ServiceNotInRuleBody {
-                        service: dep.service_name.clone(),
-                    });
-                }
-            }
+            Self::validate_entry(entry, &declared)?;
         }
         // 5 版本解析（内嵌 version_selection 合并为运行配置；不可解析 → 显式错误）
         let chain = &bundle.dataset.versioning.chain;
@@ -297,6 +287,44 @@ impl BundleImporter {
             entry_count: bundle.entries.len(),
             verdict: bundle.tests.verdict,
         })
+    }
+
+    /// 条目级门禁（SSOT）：治理侧入库（evorule-rule `add_entry`）与执行侧导入（`validate`）
+    /// 共用的拒绝口径——消除"治理放行、执行拒收"窗口。
+    ///
+    /// 1) rule_body 结构（引擎原生 transform 形态，防 loader fail-soft 静默跳过非法规则）；
+    /// 2) 符号三方一致（31 号 §9-3）：dependencies 必须在数据集服务声明中，且在 rule_body
+    ///    有 io_request 引用。动态 service 引用（`__exec__.instruction.params.*`）运行时解析，
+    ///    body 字面量不参与匹配。
+    ///
+    /// `declared_services`：数据集 data_dependencies.services 的服务名列表。
+    pub fn validate_entry(
+        entry: &BundleEntry,
+        declared_services: &[String],
+    ) -> Result<(), BundleError> {
+        // 1) rule_body 结构
+        validate_rule_structure(&entry.rule_body).map_err(|errors| {
+            BundleError::InvalidEntryStructure {
+                entry: entry.entry_id.clone(),
+                errors,
+            }
+        })?;
+        // 2) 符号三方一致
+        let has_dynamic = has_dynamic_service_ref(&entry.rule_body);
+        let body_services = io_services_from_rule_body(&entry.rule_body);
+        for dep in &entry.dependencies {
+            if !declared_services.contains(&dep.service_name) {
+                return Err(BundleError::ServiceNotDeclared {
+                    service: dep.service_name.clone(),
+                });
+            }
+            if !has_dynamic && !body_services.contains(&dep.service_name) {
+                return Err(BundleError::ServiceNotInRuleBody {
+                    service: dep.service_name.clone(),
+                });
+            }
+        }
+        Ok(())
     }
 }
 
@@ -563,15 +591,40 @@ mod tests {
     fn test_import_rejects_service_not_in_rule_body() {
         let bundle = exported_bundle();
         let mut b = bundle.clone();
+        // 结构合法（set 指令）但 rule_body 无 payroll_svc 的 io_request 引用
         b.entries[0].rule_body = serde_json::json!({
             "rule_id": "entry-tax-001",
-            "transform": []
+            "transform": [{"type": "set", "params": {"x": 1}}]
         });
         resign(&mut b);
         match BundleImporter::validate(&b) {
             Err(BundleError::ServiceNotInRuleBody { service }) => assert_eq!(service, "payroll_svc"),
             _ => panic!("expected ServiceNotInRuleBody"),
         }
+    }
+
+    #[test]
+    fn test_validate_entry_rejects_invalid_structure() {
+        // C8 SSOT 门禁：结构非法 rule_body（空 transform）→ InvalidEntryStructure
+        let entry = BundleEntry {
+            entry_id: "e1".into(),
+            rule_body: serde_json::json!({"rule_id": "e1", "transform": []}),
+            provenance: Provenance {
+                source: "test".into(),
+                clause: None,
+                document_id: None,
+                effective_from: None,
+                effective_to: None,
+                last_verified: None,
+                verified_by: None,
+            },
+            domain: "tax".into(),
+            tags: vec![],
+            dependencies: vec![],
+        };
+        let declared = vec!["payroll_svc".to_string()];
+        let err = BundleImporter::validate_entry(&entry, &declared).unwrap_err();
+        assert!(matches!(err, BundleError::InvalidEntryStructure { ref entry, .. } if entry == "e1"));
     }
 
     #[test]
