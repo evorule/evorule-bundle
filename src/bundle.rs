@@ -18,6 +18,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use evorule_hash;
+use jsonschema::{Draft, Validator};
 use thiserror::Error;
 
 use crate::dependency::{DataDependencies, SourceBinding};
@@ -49,6 +50,22 @@ pub enum BundleError {
 
     #[error("条目 `{entry}` rule_body 结构非法（引擎原生 transform 形态）: {errors:?}")]
     InvalidEntryStructure { entry: String, errors: Vec<String> },
+
+    #[error("知识数据条目 `{entry}` 缺少 schema_ref（D3 强校验：无领域 schema 的 payload 不得入库）")]
+    KnowledgeMissingSchemaRef { entry: String },
+
+    #[error("条目 `{entry}` 的 schema_ref `{uri}` 未在解析器注册（fail-fast，不静默放行）")]
+    SchemaNotResolved { entry: String, uri: String },
+
+    #[error("条目 `{entry}` payload 未通过领域 schema `{uri}` 校验: {errors:?}")]
+    PayloadSchemaViolation {
+        entry: String,
+        uri: String,
+        errors: Vec<String>,
+    },
+
+    #[error("知识数据条目 `{entry}` 携带服务依赖（MVP 不支持：数据条目不经 io_request 消费服务，服务依赖属规则条目语义）")]
+    KnowledgeWithDependencies { entry: String },
 
     #[error("auto_by_effective_date 模式需快照包携带 law_ref.effective_from 作为生效基准")]
     MissingEffectiveBase,
@@ -136,18 +153,58 @@ pub struct BundleDatasetMeta {
     pub view_of: Option<ViewRef>,
 }
 
+/// 条目类型（Q12 数据资产化：规则条目与数据条目正式分流，治理链共用）
+///
+/// - `Rule`（默认）：`rule_body` = 引擎原生 transform 指令集 → 进 TCB 确定性执行；
+/// - `Knowledge`：`rule_body` = 领域结构化 payload（零转译）+ `schema_ref` 领域 schema 引用
+///   → 不进 TCB，供领域服务经 io_request/service_registry 通道消费。
+///
+/// serde default = `Rule`：旧格式 bundle（无 entry_kind 字段）反序列化仍为规则条目，向后兼容。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum EntryKind {
+    #[default]
+    Rule,
+    Knowledge,
+}
+
+impl fmt::Display for EntryKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EntryKind::Rule => write!(f, "rule"),
+            EntryKind::Knowledge => write!(f, "knowledge"),
+        }
+    }
+}
+
+/// 领域 schema 解析器：按 `schema_ref` URI 返回领域 JSON Schema（领域仓资产）。
+///
+/// 返回 `None` = 该 URI 未注册 → 门禁拒绝（fail-fast，不静默放行）。
+/// 宿主仓注入实现（bundle 保持通用，不内置任何领域）：
+/// 治理侧（evorule-rule）与执行侧（evorule-server）各自持有一致的注册表。
+pub type DomainSchemaResolver<'a> = &'a dyn Fn(&str) -> Option<serde_json::Value>;
+
 /// 快照包条目（36 号 §2 entries 段，rule_body 原生 JSON）
+///
+/// 字段名 `rule_body` 保留（已在 crates.io 发布 0.2.x，字段名变更破坏哈希字节兼容）：
+/// Knowledge 条目时该字段承载领域 payload，语义为"零转译条目体"，见 [`EntryKind`]。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BundleEntry {
     pub entry_id: String,
-    /// evorule 原生 JSON，零转译
+    /// 条目类型（缺省 = Rule，旧格式兼容）
+    #[serde(default)]
+    pub entry_kind: EntryKind,
+    /// evorule 原生 JSON，零转译（Rule：transform 指令集；Knowledge：领域 payload）
     pub rule_body: serde_json::Value,
+    /// Knowledge 条目必填：领域 JSON Schema 引用 URI（领域仓资产，D3 强校验）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_ref: Option<String>,
     /// 溯源不丢出处
     pub provenance: Provenance,
     pub domain: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
-    /// 条目级依赖（裁剪后收缩）
+    /// 条目级依赖（裁剪后收缩；Knowledge 条目 MVP 不支持）
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dependencies: Vec<SourceBinding>,
 }
@@ -228,7 +285,10 @@ pub struct ImportResult {
 pub struct BundleImporter;
 
 impl BundleImporter {
-    pub fn validate(bundle: &DatasetBundle) -> Result<ImportResult, BundleError> {
+    pub fn validate(
+        bundle: &DatasetBundle,
+        schema_resolver: DomainSchemaResolver<'_>,
+    ) -> Result<ImportResult, BundleError> {
         // 1 schema 校验
         if bundle.bundle_schema_version != BUNDLE_SCHEMA_VERSION {
             return Err(BundleError::UnsupportedSchema {
@@ -246,7 +306,7 @@ impl BundleImporter {
             .map(|d| d.services.iter().map(|s| s.service_name.clone()).collect())
             .unwrap_or_default();
         for entry in &bundle.entries {
-            Self::validate_entry(entry, &declared)?;
+            Self::validate_entry(entry, &declared, schema_resolver)?;
         }
         // 5 版本解析（内嵌 version_selection 合并为运行配置；不可解析 → 显式错误）
         let chain = &bundle.dataset.versioning.chain;
@@ -292,13 +352,31 @@ impl BundleImporter {
     /// 条目级门禁（SSOT）：治理侧入库（evorule-rule `add_entry`）与执行侧导入（`validate`）
     /// 共用的拒绝口径——消除"治理放行、执行拒收"窗口。
     ///
-    /// 1) rule_body 结构（引擎原生 transform 形态，防 loader fail-soft 静默跳过非法规则）；
-    /// 2) 符号三方一致（31 号 §9-3）：dependencies 必须在数据集服务声明中，且在 rule_body
-    ///    有 io_request 引用。动态 service 引用（`__exec__.instruction.params.*`）运行时解析，
-    ///    body 字面量不参与匹配。
+    /// **按条目类型分流**（Q12 数据资产化，D1）：
+    ///
+    /// - `Rule` 条目：1) rule_body 结构（引擎原生 transform 形态，防 loader fail-soft 静默跳过
+    ///   非法规则）；2) 符号三方一致（31 号 §9-3）：dependencies 必须在数据集服务声明中，且在
+    ///   rule_body 有 io_request 引用。动态 service 引用（`__exec__.instruction.params.*`）
+    ///   运行时解析，body 字面量不参与匹配。**transform 白名单不开洞**（TCB dispatch 唯一权威）。
+    /// - `Knowledge` 条目：不做 transform 校验（数据条目不进 TCB）；改为 D3 强校验——
+    ///   schema_ref 必填 + resolver 必须命中 + payload 过领域 jsonschema 校验；任一失败显式拒绝。
+    ///   服务依赖 MVP 不支持（数据条目不经 io_request 消费服务），携带即拒绝。
     ///
     /// `declared_services`：数据集 data_dependencies.services 的服务名列表。
+    /// `schema_resolver`：领域 schema 解析器（见 [`DomainSchemaResolver`]）。
     pub fn validate_entry(
+        entry: &BundleEntry,
+        declared_services: &[String],
+        schema_resolver: DomainSchemaResolver<'_>,
+    ) -> Result<(), BundleError> {
+        match entry.entry_kind {
+            EntryKind::Rule => Self::validate_rule_entry(entry, declared_services),
+            EntryKind::Knowledge => Self::validate_knowledge_entry(entry, schema_resolver),
+        }
+    }
+
+    /// Rule 条目门禁（transform 结构 + 符号三方一致，原 SSOT 口径一字不动）
+    fn validate_rule_entry(
         entry: &BundleEntry,
         declared_services: &[String],
     ) -> Result<(), BundleError> {
@@ -325,6 +403,62 @@ impl BundleImporter {
             }
         }
         Ok(())
+    }
+
+    /// Knowledge 条目门禁（D3 领域 schema 强校验，fail-fast）
+    fn validate_knowledge_entry(
+        entry: &BundleEntry,
+        schema_resolver: DomainSchemaResolver<'_>,
+    ) -> Result<(), BundleError> {
+        // 1) 服务依赖：MVP 不支持（显式拒绝，不静默忽略）
+        if !entry.dependencies.is_empty() {
+            return Err(BundleError::KnowledgeWithDependencies {
+                entry: entry.entry_id.clone(),
+            });
+        }
+        // 2) schema_ref 必填
+        let uri = entry.schema_ref.as_deref().unwrap_or("");
+        if uri.is_empty() {
+            return Err(BundleError::KnowledgeMissingSchemaRef {
+                entry: entry.entry_id.clone(),
+            });
+        }
+        // 3) resolver 必须命中（未注册 = 拒绝，不静默放行）
+        let schema = schema_resolver(uri).ok_or_else(|| BundleError::SchemaNotResolved {
+            entry: entry.entry_id.clone(),
+            uri: uri.to_string(),
+        })?;
+        // 4) payload 过领域 jsonschema 校验
+        let validator = Validator::options()
+            .with_draft(Draft::Draft202012)
+            .build(&schema)
+            .map_err(|e| BundleError::PayloadSchemaViolation {
+                entry: entry.entry_id.clone(),
+                uri: uri.to_string(),
+                errors: vec![format!("领域 schema 本身非法: {e}")],
+            })?;
+        let errors: Vec<String> = match validator.validate(&entry.rule_body) {
+            Ok(()) => Vec::new(),
+            Err(iter) => iter
+                .map(|e| {
+                    let path = e.instance_path.to_string();
+                    if path.is_empty() {
+                        e.to_string()
+                    } else {
+                        format!("{path}: {e}")
+                    }
+                })
+                .collect(),
+        };
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(BundleError::PayloadSchemaViolation {
+                entry: entry.entry_id.clone(),
+                uri: uri.to_string(),
+                errors,
+            })
+        }
     }
 }
 
@@ -479,6 +613,7 @@ mod tests {
     fn entry(entry_id: &str, domain: &str) -> BundleEntry {
         BundleEntry {
             entry_id: entry_id.into(),
+            entry_kind: EntryKind::Rule,
             rule_body: serde_json::json!({
                 "rule_id": entry_id,
                 "version": "0.1.0",
@@ -486,6 +621,7 @@ mod tests {
                     { "type": "io_request", "params": { "service_name": "payroll_svc" } }
                 ]
             }),
+            schema_ref: None,
             provenance: Provenance {
                 source: "《企业所得税法》".into(),
                 clause: None,
@@ -501,6 +637,59 @@ mod tests {
                 rule_ref: "transform[0]".into(),
                 service_name: "payroll_svc".into(),
             }],
+        }
+    }
+
+    /// 空解析器（规则包测试用：rule 条目不触达 resolver）
+    fn no_resolver(_: &str) -> Option<serde_json::Value> {
+        None
+    }
+
+    /// 模拟 rpsm 场景领域 schema（resolver 注入用；领域 schema 归领域仓，此处仅测试替身）
+    fn scenario_schema() -> serde_json::Value {
+        serde_json::json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "required": ["scenario_id", "gravity", "bodies"],
+            "properties": {
+                "scenario_id": {"type": "string"},
+                "gravity": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "restitution": {"type": "number", "minimum": 0, "maximum": 1},
+                "bodies": {"type": "array", "items": {"type": "object"}}
+            }
+        })
+    }
+
+    /// 命中 rpsm 场景 schema URI 的解析器
+    fn scenario_resolver(uri: &str) -> Option<serde_json::Value> {
+        (uri == "https://rpsm.evorule.org/schemas/scenario/v1.0.json")
+            .then_some(scenario_schema())
+    }
+
+    /// knowledge 数据条目（rpsm 场景形态）
+    fn knowledge_entry(entry_id: &str) -> BundleEntry {
+        BundleEntry {
+            entry_id: entry_id.into(),
+            entry_kind: EntryKind::Knowledge,
+            rule_body: serde_json::json!({
+                "scenario_id": "spring-single-particle",
+                "gravity": [0.0, -9.81, 0.0],
+                "restitution": 1.0,
+                "bodies": [{"id": "particle-1"}]
+            }),
+            schema_ref: Some("https://rpsm.evorule.org/schemas/scenario/v1.0.json".into()),
+            provenance: Provenance {
+                source: "rpsm 内置场景".into(),
+                clause: None,
+                document_id: None,
+                effective_from: None,
+                effective_to: None,
+                last_verified: None,
+                verified_by: None,
+            },
+            domain: "physics".into(),
+            tags: vec!["physics".into()],
+            dependencies: vec![],
         }
     }
 
@@ -547,7 +736,7 @@ mod tests {
     #[test]
     fn test_import_valid_bundle() {
         let bundle = exported_bundle();
-        let r = BundleImporter::validate(&bundle).unwrap();
+        let r = BundleImporter::validate(&bundle, &no_resolver).unwrap();
         assert_eq!(r.dataset_id, "ds-tax-2024");
         assert_eq!(r.entry_count, 2);
         assert_eq!(r.selection_mode, VersionSelectionMode::AutoByEffectiveDate);
@@ -559,7 +748,7 @@ mod tests {
     fn test_import_rejects_unsupported_schema() {
         let mut b = exported_bundle();
         b.bundle_schema_version = "2.0".into();
-        match BundleImporter::validate(&b) {
+        match BundleImporter::validate(&b, &no_resolver) {
             Err(BundleError::UnsupportedSchema { found }) => assert_eq!(found, "2.0"),
             _ => panic!("expected UnsupportedSchema"),
         }
@@ -570,7 +759,7 @@ mod tests {
         let mut b = exported_bundle();
         b.tests.verdict = TestVerdict::Fail;
         resign(&mut b);
-        let err = BundleImporter::validate(&b).unwrap_err();
+        let err = BundleImporter::validate(&b, &no_resolver).unwrap_err();
         assert!(matches!(err, BundleError::TestsNotPassed { .. }));
     }
 
@@ -581,7 +770,7 @@ mod tests {
         let mut b = bundle.clone();
         b.entries[0].dependencies[0].service_name = "ghost_svc".into();
         resign(&mut b);
-        match BundleImporter::validate(&b) {
+        match BundleImporter::validate(&b, &no_resolver) {
             Err(BundleError::ServiceNotDeclared { service }) => assert_eq!(service, "ghost_svc"),
             _ => panic!("expected ServiceNotDeclared"),
         }
@@ -597,7 +786,7 @@ mod tests {
             "transform": [{"type": "set", "params": {"x": 1}}]
         });
         resign(&mut b);
-        match BundleImporter::validate(&b) {
+        match BundleImporter::validate(&b, &no_resolver) {
             Err(BundleError::ServiceNotInRuleBody { service }) => assert_eq!(service, "payroll_svc"),
             _ => panic!("expected ServiceNotInRuleBody"),
         }
@@ -608,7 +797,9 @@ mod tests {
         // C8 SSOT 门禁：结构非法 rule_body（空 transform）→ InvalidEntryStructure
         let entry = BundleEntry {
             entry_id: "e1".into(),
+            entry_kind: EntryKind::Rule,
             rule_body: serde_json::json!({"rule_id": "e1", "transform": []}),
+            schema_ref: None,
             provenance: Provenance {
                 source: "test".into(),
                 clause: None,
@@ -623,8 +814,112 @@ mod tests {
             dependencies: vec![],
         };
         let declared = vec!["payroll_svc".to_string()];
-        let err = BundleImporter::validate_entry(&entry, &declared).unwrap_err();
+        let err = BundleImporter::validate_entry(&entry, &declared, &no_resolver).unwrap_err();
         assert!(matches!(err, BundleError::InvalidEntryStructure { ref entry, .. } if entry == "e1"));
+    }
+
+    // ===== Q12 数据资产化：knowledge 条目门禁（D3 领域 schema 强校验）=====
+
+    #[test]
+    fn test_knowledge_entry_passes_with_resolver() {
+        let declared: Vec<String> = vec![];
+        BundleImporter::validate_entry(&knowledge_entry("d-scenario-1"), &declared, &scenario_resolver)
+            .unwrap();
+    }
+
+    #[test]
+    fn test_knowledge_entry_requires_schema_ref() {
+        let mut e = knowledge_entry("d-no-ref");
+        e.schema_ref = None;
+        let err = BundleImporter::validate_entry(&e, &[], &scenario_resolver).unwrap_err();
+        assert!(matches!(
+            err,
+            BundleError::KnowledgeMissingSchemaRef { ref entry } if entry == "d-no-ref"
+        ));
+    }
+
+    #[test]
+    fn test_knowledge_entry_resolver_miss_rejected() {
+        // fail-fast：schema_ref 指向未注册 URI → 拒绝（不静默放行）
+        let mut e = knowledge_entry("d-unknown-ref");
+        e.schema_ref = Some("https://unknown.example/schema.json".into());
+        let err = BundleImporter::validate_entry(&e, &[], &scenario_resolver).unwrap_err();
+        assert!(matches!(
+            err,
+            BundleError::SchemaNotResolved { ref entry, ref uri }
+                if entry == "d-unknown-ref" && uri == "https://unknown.example/schema.json"
+        ));
+    }
+
+    #[test]
+    fn test_knowledge_entry_payload_violation_rejected() {
+        // D3 强校验：payload 违反领域 schema（gravity 2 维 < minItems 3）→ 拒绝
+        let mut e = knowledge_entry("d-bad-payload");
+        e.rule_body = serde_json::json!({
+            "scenario_id": "bad",
+            "gravity": [0.0, -9.81],
+            "bodies": []
+        });
+        let err = BundleImporter::validate_entry(&e, &[], &scenario_resolver).unwrap_err();
+        assert!(matches!(
+            err,
+            BundleError::PayloadSchemaViolation { ref entry, .. } if entry == "d-bad-payload"
+        ));
+    }
+
+    #[test]
+    fn test_knowledge_entry_with_dependencies_rejected() {
+        // 数据条目不经 io_request 消费服务：携带服务依赖显式拒绝（不静默忽略）
+        let mut e = knowledge_entry("d-with-dep");
+        e.dependencies = vec![SourceBinding {
+            rule_ref: "n/a".into(),
+            service_name: "payroll_svc".into(),
+        }];
+        let err = BundleImporter::validate_entry(&e, &["payroll_svc".to_string()], &scenario_resolver)
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            BundleError::KnowledgeWithDependencies { ref entry } if entry == "d-with-dep"
+        ));
+    }
+
+    #[test]
+    fn test_mixed_bundle_validates() {
+        // 规则条目 + 数据条目混排同一数据集：双门禁各走各路
+        let mut b = bundle_with_entries(vec![entry("entry-tax-001", "tax"), knowledge_entry("d-scenario-1")]);
+        resign(&mut b);
+        BundleImporter::validate(&b, &scenario_resolver).unwrap();
+    }
+
+    #[test]
+    fn test_legacy_bundle_json_defaults_to_rule() {
+        // 旧格式（无 entry_kind 字段）反序列化 → Rule 条目，向后兼容
+        let raw = serde_json::json!({
+            "entry_id": "legacy-1",
+            "rule_body": {"rule_id": "legacy-1", "transform": [
+                {"type": "io_request", "params": {"service_name": "payroll_svc"}}
+            ]},
+            "provenance": {"source": "legacy"},
+            "domain": "tax",
+            "dependencies": [{"rule_ref": "transform[0]", "service_name": "payroll_svc"}]
+        });
+        let e: BundleEntry = serde_json::from_value(raw).unwrap();
+        assert_eq!(e.entry_kind, EntryKind::Rule);
+        assert_eq!(e.schema_ref, None);
+        let declared = vec!["payroll_svc".to_string()];
+        BundleImporter::validate_entry(&e, &declared, &no_resolver).unwrap();
+    }
+
+    #[test]
+    fn test_knowledge_bundle_end_to_end_import() {
+        // 全 knowledge 数据集：构造 → 签名 → 导入校验通过（闸门一证据 pass）
+        let mut b = bundle_with_entries(vec![knowledge_entry("d-scenario-1")]);
+        // knowledge 数据集无服务依赖
+        b.data_dependencies = None;
+        resign(&mut b);
+        let r = BundleImporter::validate(&b, &scenario_resolver).unwrap();
+        assert_eq!(r.entry_count, 1);
+        assert_eq!(r.verdict, TestVerdict::Pass);
     }
 
     #[test]
@@ -638,7 +933,7 @@ mod tests {
             pinned_include_patch: None,
         });
         resign(&mut b);
-        let r = BundleImporter::validate(&b).unwrap();
+        let r = BundleImporter::validate(&b, &no_resolver).unwrap();
         assert_eq!(r.resolved_version.as_deref(), Some("v1.p1")); // 同主版本最新 Patch
         assert_eq!(r.selection_mode, VersionSelectionMode::Pinned);
     }
@@ -648,7 +943,7 @@ mod tests {
         let mut b = exported_bundle();
         b.dataset.law_ref = None;
         resign(&mut b);
-        let err = BundleImporter::validate(&b).unwrap_err();
+        let err = BundleImporter::validate(&b, &no_resolver).unwrap_err();
         assert!(matches!(err, BundleError::MissingEffectiveBase));
     }
 
@@ -672,7 +967,7 @@ mod tests {
         assert_eq!(view.audit.exported_by, "si-company");
         view.verify_content_hash().unwrap();
         // 视图仍是合法可导入包
-        BundleImporter::validate(&view).unwrap();
+        BundleImporter::validate(&view, &no_resolver).unwrap();
     }
 
     #[test]

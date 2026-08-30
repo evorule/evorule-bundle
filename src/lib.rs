@@ -10,7 +10,11 @@
 //! 边界：**纯 lib，无 bin / 无服务 / 无 I/O**。治理专属逻辑（BundleExporter 依赖 RuleDataset/RuleEntry、
 //! LLM 边界、状态机迁移、凭据扫描）留在 evorule-rule，本 crate 只承载快照包自洽校验。
 //!
-//! 零转译：`entries[].rule_body` 原样 = evorule-server 可执行规则 JSON。
+//! 零转译：`entries[].rule_body` 原样 = evorule-server 可执行规则 JSON（Rule 条目）或
+//! 领域 payload（Knowledge 条目，Q12 数据资产化，见 `EntryKind`）。
+//!
+//! 条目类型分流（Q12/D1）：Rule 条目走 transform 白名单门禁（TCB dispatch 唯一权威，不开洞）；
+//! Knowledge 条目走 D3 领域 schema 强校验（`DomainSchemaResolver` 注入，resolver 未命中即拒绝）。
 //!
 //! 许可：Apache-2.0（自 v0.2.1 起；历史版本曾以 AGPL-3.0-or-later 发布）
 
@@ -30,7 +34,8 @@ pub const BUNDLE_MANIFEST_FILE: &str = "bundle_manifest.json";
 
 pub use bundle::{
     BundleAudit, BundleDatasetMeta, BundleEntry, BundleError, BundleImporter, BundleTests,
-    BundleTrimmer, DatasetBundle, ImportResult, TestVerdict, ViewRef, BUNDLE_SCHEMA_VERSION,
+    BundleTrimmer, DatasetBundle, DomainSchemaResolver, EntryKind, ImportResult, TestVerdict,
+    ViewRef, BUNDLE_SCHEMA_VERSION,
 };
 pub use dependency::{
     DataDependencies, InputDecl, IoContract, ServiceDecl, ServiceTemplate, SourceBinding,

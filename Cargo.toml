@@ -1,6 +1,6 @@
 [package]
 name = "evorule-bundle"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 description = "EvoRule snapshot bundle (DatasetBundle) self-contained validation — shared by governance (evorule-rule) and execution (evorule-server)"
 license = "Apache-2.0"
@@ -17,6 +17,8 @@ thiserror = "2"
 # 发布到 crates.io 必须用 crates.io 版本依赖（path 依赖不允许发布）
 # 本地开发如需覆盖，在消费方 Cargo.toml 用 [patch.crates-io] 指向本地 path
 evorule-hash = "0.1.0"
+# D3 领域 schema 强校验（与 evorule-server core/rule_schema 同版本，API 一致）
+jsonschema = "0.21"
 
 [dev-dependencies]
 
