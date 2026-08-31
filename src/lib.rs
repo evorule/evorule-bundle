@@ -34,8 +34,8 @@ pub const BUNDLE_MANIFEST_FILE: &str = "bundle_manifest.json";
 
 pub use bundle::{
     BundleAudit, BundleDatasetMeta, BundleEntry, BundleError, BundleImporter, BundleTests,
-    BundleTrimmer, DatasetBundle, DomainSchemaResolver, EntryKind, ImportResult, TestVerdict,
-    ViewRef, BUNDLE_SCHEMA_VERSION,
+    BundleTrimmer, DatasetBundle, DomainSchemaResolver, EntryFilter, EntryKind, ImportResult,
+    TestVerdict, ViewRef, BUNDLE_SCHEMA_VERSION,
 };
 pub use dependency::{
     DataDependencies, InputDecl, IoContract, ServiceDecl, ServiceTemplate, SourceBinding,
