@@ -76,6 +76,9 @@ pub enum BundleError {
     #[error("裁剪结果为空（所选条件无匹配条目）")]
     EmptyView,
 
+    #[error("查询表达式段 `{0}` 非法（合法段：tag:x / domain:x / ids:a,b / kind:rule|knowledge / q:子串，多段以 ; 分隔）")]
+    BadFilterSegment(String),
+
     #[error("版本解析错误: {0}")]
     Resolve(#[from] ResolveError),
 
@@ -551,6 +554,79 @@ impl BundleTrimmer {
     }
 }
 
+/// 条目查询表达式（B3 段B 14 号，SSOT）—— 与 bundle subset 裁剪语法同族的纯函数过滤核。
+///
+/// 语法：多段以 `;` 分隔，**交集语义**；段格式 `kind:value`：
+/// - `tag:core`：标签命中（任一标签相等即命中）
+/// - `domain:tax`：领域精确匹配
+/// - `ids:id1,id2`：条目 ID 精确命中（逗号分隔）
+/// - `kind:rule|knowledge`：条目类型
+/// - `q:子串`：子串命中 entry_id / domain / tags / rule_body 序列化文本
+///
+/// 非法段显式报错（不静默忽略，既有纪律）；空段跳过；返回保持原顺序。
+pub struct EntryFilter;
+
+impl EntryFilter {
+    /// 解析并应用过滤表达式。先整段校验（任一非法段即整体拒绝，不部分应用），再逐段过滤。
+    pub fn apply(entries: &[BundleEntry], spec: &str) -> Result<Vec<BundleEntry>, BundleError> {
+        let mut segs: Vec<(&str, &str)> = Vec::new();
+        for seg in spec.split(';') {
+            let seg = seg.trim();
+            if seg.is_empty() {
+                continue;
+            }
+            let Some((kind, value)) = seg.split_once(':') else {
+                return Err(BundleError::BadFilterSegment(seg.into()));
+            };
+            let value = value.trim();
+            if value.is_empty() {
+                return Err(BundleError::BadFilterSegment(seg.into()));
+            }
+            match kind {
+                "tag" | "domain" | "ids" | "q" => {}
+                "kind" => {
+                    if value != "rule" && value != "knowledge" {
+                        return Err(BundleError::BadFilterSegment(seg.into()));
+                    }
+                }
+                _ => return Err(BundleError::BadFilterSegment(seg.into())),
+            }
+            segs.push((kind, value));
+        }
+        let mut out: Vec<BundleEntry> = entries.to_vec();
+        for (kind, value) in segs {
+            out.retain(|e| Self::matches(e, kind, value));
+        }
+        Ok(out)
+    }
+
+    /// 单段匹配判定（`kind`/`value` 已经过 apply 的段合法性校验）
+    fn matches(e: &BundleEntry, kind: &str, value: &str) -> bool {
+        match kind {
+            "tag" => e.tags.iter().any(|t| t == value),
+            "domain" => e.domain == value,
+            "ids" => value
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .any(|id| id == e.entry_id),
+            "kind" => match value {
+                "rule" => e.entry_kind == EntryKind::Rule,
+                _ => e.entry_kind == EntryKind::Knowledge,
+            },
+            "q" => {
+                let body = serde_json::to_string(&e.rule_body).unwrap_or_default();
+                e.entry_id.contains(value)
+                    || e.domain.contains(value)
+                    || e.tags.iter().any(|t| t.contains(value))
+                    || body.contains(value)
+            }
+            // apply 已校验，其余分支不可达
+            _ => false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -643,6 +719,67 @@ mod tests {
     /// 空解析器（规则包测试用：rule 条目不触达 resolver）
     fn no_resolver(_: &str) -> Option<serde_json::Value> {
         None
+    }
+
+    // B3（段B 14 号）：EntryFilter 条目查询表达式纯函数
+
+    fn filter_ids(entries: &[BundleEntry], spec: &str) -> Vec<String> {
+        EntryFilter::apply(entries, spec)
+            .unwrap()
+            .into_iter()
+            .map(|e| e.entry_id)
+            .collect()
+    }
+
+    #[test]
+    fn test_entry_filter_segments() {
+        let entries = vec![
+            entry("e1", "tax"),
+            entry("e2", "tax"),
+            {
+                let mut e = entry("e3", "rpsm");
+                e.tags.push("core".into());
+                e
+            },
+        ];
+        // domain 精确
+        assert_eq!(filter_ids(&entries, "domain:rpsm"), vec!["e3"]);
+        // tag 任一命中
+        assert_eq!(filter_ids(&entries, "tag:core"), vec!["e3"]);
+        // ids 逗号列表
+        assert_eq!(filter_ids(&entries, "ids:e1, e3"), vec!["e1", "e3"]);
+        // q 子串命中 entry_id
+        assert_eq!(filter_ids(&entries, "q:e2"), vec!["e2"]);
+        // q 子串命中 rule_body 序列化文本（rule_id 字段值）
+        assert_eq!(filter_ids(&entries, "q:e1"), vec!["e1"]);
+        // 多段交集
+        assert_eq!(filter_ids(&entries, "domain:tax;ids:e1,e2;q:e2"), vec!["e2"]);
+        // 空段跳过 / 空表达式全量
+        assert_eq!(filter_ids(&entries, ";"), vec!["e1", "e2", "e3"]);
+        assert_eq!(filter_ids(&entries, ""), vec!["e1", "e2", "e3"]);
+    }
+
+    #[test]
+    fn test_entry_filter_rejects_bad_segments() {
+        let entries = vec![entry("e1", "tax")];
+        for bad in ["noseg", "kind:whatever", "tag:", "domain:", "ids:", "q: "] {
+            let err = EntryFilter::apply(&entries, bad).unwrap_err();
+            assert!(matches!(err, BundleError::BadFilterSegment(_)), "{bad}: {err}");
+        }
+        // 非法段整体拒绝：不部分应用（任一非法段 → Err，无副作用）
+        let err = EntryFilter::apply(&entries, "domain:tax;noseg").unwrap_err();
+        assert!(matches!(err, BundleError::BadFilterSegment(_)));
+    }
+
+    #[test]
+    fn test_entry_filter_kind_segment() {
+        let mut k = entry("k1", "rpsm");
+        k.entry_kind = EntryKind::Knowledge;
+        k.schema_ref = Some("https://rpsm.evorule.org/schemas/scenario/v1.0.json".into());
+        let entries = vec![entry("e1", "tax"), k];
+        assert_eq!(filter_ids(&entries, "kind:rule"), vec!["e1"]);
+        assert_eq!(filter_ids(&entries, "kind:knowledge"), vec!["k1"]);
+        assert_eq!(filter_ids(&entries, "kind:knowledge;domain:rpsm"), vec!["k1"]);
     }
 
     /// 模拟 rpsm 场景领域 schema（resolver 注入用；领域 schema 归领域仓，此处仅测试替身）
