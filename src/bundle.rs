@@ -21,7 +21,7 @@ use evorule_hash;
 use jsonschema::{Draft, Validator};
 use thiserror::Error;
 
-use crate::dependency::{DataDependencies, SourceBinding};
+use crate::dependency::{DataDependencies, EventSchemaDecl, SourceBinding};
 use crate::provenance::Provenance;
 use crate::resolve::{ResolveError, VersionResolver};
 use crate::structure::validate_rule_structure;
@@ -66,6 +66,22 @@ pub enum BundleError {
 
     #[error("知识数据条目 `{entry}` 携带服务依赖（MVP 不支持：数据条目不经 io_request 消费服务，服务依赖属规则条目语义）")]
     KnowledgeWithDependencies { entry: String },
+
+    #[error("push 事件声明 `{name}` 的 schema_ref 为空（D3 强校验：无领域 schema 的事件声明不得入包）")]
+    EventSchemaMissingRef { name: String },
+
+    #[error("push 事件声明 `{name}` 的 schema_ref `{uri}` 未在解析器注册（fail-fast，不静默放行）")]
+    EventSchemaNotResolved { name: String, uri: String },
+
+    #[error("push 事件声明 `{name}` 的领域 schema `{uri}` 本身非法: {errors:?}")]
+    EventSchemaInvalid {
+        name: String,
+        uri: String,
+        errors: Vec<String>,
+    },
+
+    #[error("push 事件声明 `{name}` 重复（数据集内事件名必须唯一）")]
+    EventSchemaDuplicate { name: String },
 
     #[error("auto_by_effective_date 模式需快照包携带 law_ref.effective_from 作为生效基准")]
     MissingEffectiveBase,
@@ -154,6 +170,9 @@ pub struct BundleDatasetMeta {
     /// 裁剪视图引用（非裁剪包为 None）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub view_of: Option<ViewRef>,
+    /// 数据集级 push 事件 schema 声明（段B B5；随包携带供消费方契约发现）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub event_schemas: Vec<EventSchemaDecl>,
 }
 
 /// 条目类型（Q12 数据资产化：规则条目与数据条目正式分流，治理链共用）
@@ -311,6 +330,8 @@ impl BundleImporter {
         for entry in &bundle.entries {
             Self::validate_entry(entry, &declared, schema_resolver)?;
         }
+        // 4b push 事件声明门禁（段B B5）：事件名唯一 + schema_ref 经 resolver 强校验（fail-fast）
+        Self::validate_event_schemas(&bundle.dataset.event_schemas, schema_resolver)?;
         // 5 版本解析（内嵌 version_selection 合并为运行配置；不可解析 → 显式错误）
         let chain = &bundle.dataset.versioning.chain;
         let selection = bundle.dataset.version_selection.as_ref();
@@ -462,6 +483,46 @@ impl BundleImporter {
                 errors,
             })
         }
+    }
+
+    /// 数据集级 push 事件声明门禁（段B B5）：与 Knowledge 条目同一 resolver 体系。
+    ///
+    /// - 事件名唯一（重名显式拒绝，不静默覆盖）；
+    /// - schema_ref 非空 + resolver 必须命中 + schema 本身可构建校验器
+    ///   （声明侧无实例数据，校验到 schema 合法性为止；实例校验由事件消费方执行）。
+    fn validate_event_schemas(
+        decls: &[EventSchemaDecl],
+        schema_resolver: DomainSchemaResolver<'_>,
+    ) -> Result<(), BundleError> {
+        let mut seen: HashSet<&str> = HashSet::new();
+        for decl in decls {
+            if !seen.insert(decl.name.as_str()) {
+                return Err(BundleError::EventSchemaDuplicate {
+                    name: decl.name.clone(),
+                });
+            }
+            let uri = decl.schema_ref.trim();
+            if uri.is_empty() {
+                return Err(BundleError::EventSchemaMissingRef {
+                    name: decl.name.clone(),
+                });
+            }
+            let schema = schema_resolver(uri).ok_or_else(|| BundleError::EventSchemaNotResolved {
+                name: decl.name.clone(),
+                uri: uri.to_string(),
+            })?;
+            if let Err(e) = Validator::options()
+                .with_draft(Draft::Draft202012)
+                .build(&schema)
+            {
+                return Err(BundleError::EventSchemaInvalid {
+                    name: decl.name.clone(),
+                    uri: uri.to_string(),
+                    errors: vec![format!("领域 schema 本身非法: {e}")],
+                });
+            }
+        }
+        Ok(())
     }
 }
 
@@ -657,6 +718,7 @@ mod tests {
                     pinned_include_patch: None,
                 }),
                 view_of: None,
+                event_schemas: vec![],
             },
             entries,
             data_dependencies: Some(DataDependencies {
@@ -1057,6 +1119,88 @@ mod tests {
         let r = BundleImporter::validate(&b, &scenario_resolver).unwrap();
         assert_eq!(r.entry_count, 1);
         assert_eq!(r.verdict, TestVerdict::Pass);
+    }
+
+    // ===== 段B B5：数据集级 push 事件 schema 声明 =====
+
+    use crate::dependency::EventSchemaDecl;
+
+    fn event_decl(name: &str, uri: &str) -> EventSchemaDecl {
+        EventSchemaDecl {
+            name: name.into(),
+            schema_ref: uri.into(),
+            direction: Default::default(),
+            description: None,
+        }
+    }
+
+    #[test]
+    fn test_event_schemas_roundtrip_and_import() {
+        // 测试门①：声明随包携带，经 JSON 往返不丢失，导入校验通过
+        let mut b = exported_bundle();
+        b.dataset.event_schemas = vec![event_decl(
+            "payroll_event",
+            "https://rpsm.evorule.org/schemas/scenario/v1.0.json",
+        )];
+        resign(&mut b);
+        let json = serde_json::to_string(&b).unwrap();
+        let back: DatasetBundle = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.dataset.event_schemas, b.dataset.event_schemas);
+        assert_eq!(back.dataset.event_schemas[0].name, "payroll_event");
+        BundleImporter::validate(&back, &scenario_resolver).unwrap();
+    }
+
+    #[test]
+    fn test_event_schema_unknown_ref_rejected() {
+        // 测试门②：schema_ref 指向未注册 URI → 导入显式拒绝（fail-fast）
+        let mut b = exported_bundle();
+        b.dataset.event_schemas = vec![event_decl("e1", "https://unknown.example/e.json")];
+        resign(&mut b);
+        let err = BundleImporter::validate(&b, &scenario_resolver).unwrap_err();
+        assert!(matches!(
+            err,
+            BundleError::EventSchemaNotResolved { ref name, ref uri }
+                if name == "e1" && uri == "https://unknown.example/e.json"
+        ));
+    }
+
+    #[test]
+    fn test_event_schema_duplicate_and_missing_ref_rejected() {
+        // 事件名重复 → 显式拒绝（不静默覆盖）
+        let mut b = exported_bundle();
+        let uri = "https://rpsm.evorule.org/schemas/scenario/v1.0.json";
+        b.dataset.event_schemas = vec![event_decl("e1", uri), event_decl("e1", uri)];
+        resign(&mut b);
+        let err = BundleImporter::validate(&b, &scenario_resolver).unwrap_err();
+        assert!(matches!(
+            err,
+            BundleError::EventSchemaDuplicate { ref name } if name == "e1"
+        ));
+        // schema_ref 空 → 显式拒绝（D3 强校验）
+        let mut b2 = exported_bundle();
+        b2.dataset.event_schemas = vec![event_decl("e1", "   ")];
+        resign(&mut b2);
+        let err = BundleImporter::validate(&b2, &scenario_resolver).unwrap_err();
+        assert!(matches!(
+            err,
+            BundleError::EventSchemaMissingRef { ref name } if name == "e1"
+        ));
+    }
+
+    #[test]
+    fn test_legacy_bundle_without_event_schemas_defaults_empty() {
+        // 测试门③：存量数据集/旧格式包（无 event_schemas 字段）→ 缺省空，零迁移回归
+        let mut b = exported_bundle();
+        b.dataset.event_schemas = vec![];
+        let json = serde_json::to_string(&b).unwrap();
+        let mut v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        // 模拟旧格式：整个字段不存在（skip_serializing_if 已不写出，此处显式删除再验）
+        if let Some(ds) = v.get_mut("dataset").and_then(|d| d.as_object_mut()) {
+            ds.remove("event_schemas");
+        }
+        let back: DatasetBundle = serde_json::from_value(v).unwrap();
+        assert!(back.dataset.event_schemas.is_empty());
+        BundleImporter::validate(&back, &no_resolver).unwrap();
     }
 
     #[test]

@@ -29,6 +29,35 @@ pub struct InputDecl {
     pub empty_allowed: bool,
 }
 
+/// 事件方向（段B B5：MVP 恒为 push；预留扩展位避免未来破坏性 schema 升级）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum EventDirection {
+    /// 推入式：外部系统向规则引擎推事件（数据集声明事件形态契约）
+    #[default]
+    Push,
+}
+
+/// 数据集级 push 事件 schema 声明（段B B5，14 号）
+///
+/// - 声明数据集消费的推入式事件的**形态契约**（name + schema_ref + direction），
+///   供消费方做契约发现；回写事件（RuleFailureEvent）定型不变，与此声明无关；
+/// - `schema_ref` 指向领域 JSON Schema（领域仓资产），导入侧经
+///   [`crate::bundle::DomainSchemaResolver`] 门禁强校验（fail-fast，未注册即拒绝）；
+/// - 事件名数据集内唯一（重名显式拒绝，不静默覆盖）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EventSchemaDecl {
+    /// 事件名（数据集内唯一；与 InputDecl.name 同一命名空间语义）
+    pub name: String,
+    /// 领域 JSON Schema 引用 URI（与 KnowledgeEntry.schema_ref 同一解析器体系）
+    pub schema_ref: String,
+    /// 方向（MVP 恒为 push）
+    #[serde(default)]
+    pub direction: EventDirection,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
 /// 无凭据服务模板（35 号 §5，决策点⑤ 方案 B）
 ///
 /// 模板 = 端点形状 + 参数占位 + 说明，**不含真实端点/密钥**；实际值由消费者在
@@ -149,5 +178,26 @@ mod tests {
         assert_eq!(old.services[0].description, None);
         assert_eq!(old.services[0].version, None);
         assert_eq!(old.inputs, vec![]);
+    }
+
+    #[test]
+    fn test_event_schema_decl_serde() {
+        let decl = EventSchemaDecl {
+            name: "payroll_event".into(),
+            schema_ref: "https://rpsm.evorule.org/schemas/payroll-event/v1.0.json".into(),
+            direction: EventDirection::Push,
+            description: Some("工资发放触发事件".into()),
+        };
+        let json = serde_json::to_string(&decl).unwrap();
+        assert!(json.contains("\"direction\":\"push\""));
+        let back: EventSchemaDecl = serde_json::from_str(&json).unwrap();
+        assert_eq!(decl, back);
+        // 缺省兼容：无 direction/description 字段（老格式/手写 JSON）→ push + None
+        let old: EventSchemaDecl = serde_json::from_str(
+            r#"{"name":"e","schema_ref":"https://x/s.json"}"#,
+        )
+        .unwrap();
+        assert_eq!(old.direction, EventDirection::Push);
+        assert_eq!(old.description, None);
     }
 }
