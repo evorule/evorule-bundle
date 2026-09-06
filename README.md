@@ -9,6 +9,8 @@
 
 # evorule-bundle
 
+[![CI](https://github.com/evorule/evorule-bundle/actions/workflows/ci.yml/badge.svg)](https://github.com/evorule/evorule-bundle/actions/workflows/ci.yml)
+
 **EvoRule 快照包共享校验 crate — 治理侧 ↔ 执行侧解耦的唯一传输契约**
 
 > 纯 lib，无 bin / 无服务 / 无 I/O。承载 `DatasetBundle`（快照包）类型、6 项导入校验链、
