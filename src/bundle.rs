@@ -16,9 +16,9 @@
 use std::collections::HashSet;
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
 use evorule_hash;
 use jsonschema::{Draft, Validator};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::dependency::{DataDependencies, EventSchemaDecl, SourceBinding};
@@ -26,9 +26,7 @@ use crate::provenance::Provenance;
 use crate::resolve::{ResolveError, VersionResolver};
 use crate::structure::validate_rule_structure;
 use crate::symbols::{has_dynamic_service_ref, io_services_from_rule_body};
-use crate::version::{
-    LawRef, VersionError, VersionSelection, VersionSelectionMode, Versioning,
-};
+use crate::version::{LawRef, VersionError, VersionSelection, VersionSelectionMode, Versioning};
 
 /// 当前支持的快照包 schema 版本
 pub const BUNDLE_SCHEMA_VERSION: &str = "1.0";
@@ -51,7 +49,9 @@ pub enum BundleError {
     #[error("条目 `{entry}` rule_body 结构非法（引擎原生 transform 形态）: {errors:?}")]
     InvalidEntryStructure { entry: String, errors: Vec<String> },
 
-    #[error("知识数据条目 `{entry}` 缺少 schema_ref（D3 强校验：无领域 schema 的 payload 不得入库）")]
+    #[error(
+        "知识数据条目 `{entry}` 缺少 schema_ref（D3 强校验：无领域 schema 的 payload 不得入库）"
+    )]
     KnowledgeMissingSchemaRef { entry: String },
 
     #[error("条目 `{entry}` 的 schema_ref `{uri}` 未在解析器注册（fail-fast，不静默放行）")]
@@ -67,10 +67,14 @@ pub enum BundleError {
     #[error("知识数据条目 `{entry}` 携带服务依赖（MVP 不支持：数据条目不经 io_request 消费服务，服务依赖属规则条目语义）")]
     KnowledgeWithDependencies { entry: String },
 
-    #[error("push 事件声明 `{name}` 的 schema_ref 为空（D3 强校验：无领域 schema 的事件声明不得入包）")]
+    #[error(
+        "push 事件声明 `{name}` 的 schema_ref 为空（D3 强校验：无领域 schema 的事件声明不得入包）"
+    )]
     EventSchemaMissingRef { name: String },
 
-    #[error("push 事件声明 `{name}` 的 schema_ref `{uri}` 未在解析器注册（fail-fast，不静默放行）")]
+    #[error(
+        "push 事件声明 `{name}` 的 schema_ref `{uri}` 未在解析器注册（fail-fast，不静默放行）"
+    )]
     EventSchemaNotResolved { name: String, uri: String },
 
     #[error("push 事件声明 `{name}` 的领域 schema `{uri}` 本身非法: {errors:?}")]
@@ -507,10 +511,11 @@ impl BundleImporter {
                     name: decl.name.clone(),
                 });
             }
-            let schema = schema_resolver(uri).ok_or_else(|| BundleError::EventSchemaNotResolved {
-                name: decl.name.clone(),
-                uri: uri.to_string(),
-            })?;
+            let schema =
+                schema_resolver(uri).ok_or_else(|| BundleError::EventSchemaNotResolved {
+                    name: decl.name.clone(),
+                    uri: uri.to_string(),
+                })?;
             if let Err(e) = Validator::options()
                 .with_draft(Draft::Draft202012)
                 .build(&schema)
@@ -592,7 +597,8 @@ impl BundleTrimmer {
                 });
             }
         }
-        dd.services.retain(|s| used.contains(s.service_name.as_str()));
+        dd.services
+            .retain(|s| used.contains(s.service_name.as_str()));
 
         let mut view = bundle.clone();
         view.bundle_id = format!("{}_view", bundle.bundle_id);
@@ -795,15 +801,11 @@ mod tests {
 
     #[test]
     fn test_entry_filter_segments() {
-        let entries = vec![
-            entry("e1", "tax"),
-            entry("e2", "tax"),
-            {
-                let mut e = entry("e3", "rpsm");
-                e.tags.push("core".into());
-                e
-            },
-        ];
+        let entries = vec![entry("e1", "tax"), entry("e2", "tax"), {
+            let mut e = entry("e3", "rpsm");
+            e.tags.push("core".into());
+            e
+        }];
         // domain 精确
         assert_eq!(filter_ids(&entries, "domain:rpsm"), vec!["e3"]);
         // tag 任一命中
@@ -815,7 +817,10 @@ mod tests {
         // q 子串命中 rule_body 序列化文本（rule_id 字段值）
         assert_eq!(filter_ids(&entries, "q:e1"), vec!["e1"]);
         // 多段交集
-        assert_eq!(filter_ids(&entries, "domain:tax;ids:e1,e2;q:e2"), vec!["e2"]);
+        assert_eq!(
+            filter_ids(&entries, "domain:tax;ids:e1,e2;q:e2"),
+            vec!["e2"]
+        );
         // 空段跳过 / 空表达式全量
         assert_eq!(filter_ids(&entries, ";"), vec!["e1", "e2", "e3"]);
         assert_eq!(filter_ids(&entries, ""), vec!["e1", "e2", "e3"]);
@@ -826,7 +831,10 @@ mod tests {
         let entries = vec![entry("e1", "tax")];
         for bad in ["noseg", "kind:whatever", "tag:", "domain:", "ids:", "q: "] {
             let err = EntryFilter::apply(&entries, bad).unwrap_err();
-            assert!(matches!(err, BundleError::BadFilterSegment(_)), "{bad}: {err}");
+            assert!(
+                matches!(err, BundleError::BadFilterSegment(_)),
+                "{bad}: {err}"
+            );
         }
         // 非法段整体拒绝：不部分应用（任一非法段 → Err，无副作用）
         let err = EntryFilter::apply(&entries, "domain:tax;noseg").unwrap_err();
@@ -841,7 +849,10 @@ mod tests {
         let entries = vec![entry("e1", "tax"), k];
         assert_eq!(filter_ids(&entries, "kind:rule"), vec!["e1"]);
         assert_eq!(filter_ids(&entries, "kind:knowledge"), vec!["k1"]);
-        assert_eq!(filter_ids(&entries, "kind:knowledge;domain:rpsm"), vec!["k1"]);
+        assert_eq!(
+            filter_ids(&entries, "kind:knowledge;domain:rpsm"),
+            vec!["k1"]
+        );
     }
 
     /// 模拟 rpsm 场景领域 schema（resolver 注入用；领域 schema 归领域仓，此处仅测试替身）
@@ -861,8 +872,7 @@ mod tests {
 
     /// 命中 rpsm 场景 schema URI 的解析器
     fn scenario_resolver(uri: &str) -> Option<serde_json::Value> {
-        (uri == "https://rpsm.evorule.org/schemas/scenario/v1.0.json")
-            .then_some(scenario_schema())
+        (uri == "https://rpsm.evorule.org/schemas/scenario/v1.0.json").then_some(scenario_schema())
     }
 
     /// knowledge 数据条目（rpsm 场景形态）
@@ -901,8 +911,10 @@ mod tests {
     }
 
     fn exported_bundle() -> DatasetBundle {
-        let mut b =
-            bundle_with_entries(vec![entry("entry-tax-001", "tax"), entry("entry-labor-002", "labor")]);
+        let mut b = bundle_with_entries(vec![
+            entry("entry-tax-001", "tax"),
+            entry("entry-labor-002", "labor"),
+        ]);
         resign(&mut b); // 直接构造（非 BundleExporter）→ 需签名哈希
         b
     }
@@ -924,8 +936,7 @@ mod tests {
         // 防篡改校验通过；改一处内容 → 校验失败
         bundle.verify_content_hash().unwrap();
         let mut tampered = bundle.clone();
-        tampered.entries[0].rule_body =
-            serde_json::json!({"rule_id": "hacked"});
+        tampered.entries[0].rule_body = serde_json::json!({"rule_id": "hacked"});
         assert!(matches!(
             tampered.verify_content_hash(),
             Err(BundleError::ContentHashMismatch { .. })
@@ -986,7 +997,9 @@ mod tests {
         });
         resign(&mut b);
         match BundleImporter::validate(&b, &no_resolver) {
-            Err(BundleError::ServiceNotInRuleBody { service }) => assert_eq!(service, "payroll_svc"),
+            Err(BundleError::ServiceNotInRuleBody { service }) => {
+                assert_eq!(service, "payroll_svc")
+            }
             _ => panic!("expected ServiceNotInRuleBody"),
         }
     }
@@ -1014,7 +1027,9 @@ mod tests {
         };
         let declared = vec!["payroll_svc".to_string()];
         let err = BundleImporter::validate_entry(&entry, &declared, &no_resolver).unwrap_err();
-        assert!(matches!(err, BundleError::InvalidEntryStructure { ref entry, .. } if entry == "e1"));
+        assert!(
+            matches!(err, BundleError::InvalidEntryStructure { ref entry, .. } if entry == "e1")
+        );
     }
 
     // ===== Q12 数据资产化：knowledge 条目门禁（D3 领域 schema 强校验）=====
@@ -1022,8 +1037,12 @@ mod tests {
     #[test]
     fn test_knowledge_entry_passes_with_resolver() {
         let declared: Vec<String> = vec![];
-        BundleImporter::validate_entry(&knowledge_entry("d-scenario-1"), &declared, &scenario_resolver)
-            .unwrap();
+        BundleImporter::validate_entry(
+            &knowledge_entry("d-scenario-1"),
+            &declared,
+            &scenario_resolver,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -1074,8 +1093,9 @@ mod tests {
             rule_ref: "n/a".into(),
             service_name: "payroll_svc".into(),
         }];
-        let err = BundleImporter::validate_entry(&e, &["payroll_svc".to_string()], &scenario_resolver)
-            .unwrap_err();
+        let err =
+            BundleImporter::validate_entry(&e, &["payroll_svc".to_string()], &scenario_resolver)
+                .unwrap_err();
         assert!(matches!(
             err,
             BundleError::KnowledgeWithDependencies { ref entry } if entry == "d-with-dep"
@@ -1085,7 +1105,10 @@ mod tests {
     #[test]
     fn test_mixed_bundle_validates() {
         // 规则条目 + 数据条目混排同一数据集：双门禁各走各路
-        let mut b = bundle_with_entries(vec![entry("entry-tax-001", "tax"), knowledge_entry("d-scenario-1")]);
+        let mut b = bundle_with_entries(vec![
+            entry("entry-tax-001", "tax"),
+            knowledge_entry("d-scenario-1"),
+        ]);
         resign(&mut b);
         BundleImporter::validate(&b, &scenario_resolver).unwrap();
     }
@@ -1231,8 +1254,13 @@ mod tests {
     #[test]
     fn test_trim_by_ids_is_view() {
         let bundle = exported_bundle();
-        let view = BundleTrimmer::trim_by_ids(&bundle, &["entry-tax-001".into()], "si-company", "2026-08-21T14:00:00Z")
-            .unwrap();
+        let view = BundleTrimmer::trim_by_ids(
+            &bundle,
+            &["entry-tax-001".into()],
+            "si-company",
+            "2026-08-21T14:00:00Z",
+        )
+        .unwrap();
         // 只留 1 条
         assert_eq!(view.entries.len(), 1);
         assert_eq!(view.entries[0].entry_id, "entry-tax-001");
@@ -1243,7 +1271,11 @@ mod tests {
         assert_eq!(view.dataset.versioning, bundle.dataset.versioning); // 版本链不变
         assert_eq!(view.audit.source_version, "v1");
         // 依赖收缩：payroll_svc 仍在使用；inputs 保留
-        assert!(view.data_dependencies.as_ref().unwrap().has_service("payroll_svc"));
+        assert!(view
+            .data_dependencies
+            .as_ref()
+            .unwrap()
+            .has_service("payroll_svc"));
         // 审计重算：新导出者 + 新哈希
         assert_eq!(view.audit.exported_by, "si-company");
         view.verify_content_hash().unwrap();
@@ -1254,7 +1286,8 @@ mod tests {
     #[test]
     fn test_trim_by_filter_domain() {
         let bundle = exported_bundle();
-        let view = BundleTrimmer::trim_by_filter(&bundle, Some("labor"), &[], "si-company", "t").unwrap();
+        let view =
+            BundleTrimmer::trim_by_filter(&bundle, Some("labor"), &[], "si-company", "t").unwrap();
         assert_eq!(view.entries.len(), 1);
         assert_eq!(view.entries[0].domain, "labor");
     }
