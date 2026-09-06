@@ -155,7 +155,10 @@ mod tests {
                 template: Some(ServiceTemplate {
                     url: "https://{base}/api/payroll".into(),
                     method: Some("POST".into()),
-                    headers_templates: BTreeMap::from([("X-Client-Id".into(), "{client_id}".into())]),
+                    headers_templates: BTreeMap::from([(
+                        "X-Client-Id".into(),
+                        "{client_id}".into(),
+                    )]),
                     timeout_ms_hint: Some(5000),
                     notes: Some("base/鉴权按客户环境填写".into()),
                 }),
@@ -170,10 +173,9 @@ mod tests {
         assert!(!back.has_service("nope"));
         assert_eq!(back.services[0].version.as_deref(), Some("1.2.0"));
         // 缺省字段回退（老数据兼容：无 template/description/empty_allowed/version 反序列化成功）
-        let old: DataDependencies = serde_json::from_str(
-            r#"{"services":[{"service_name":"s","sensitive":false}]}"#,
-        )
-        .unwrap();
+        let old: DataDependencies =
+            serde_json::from_str(r#"{"services":[{"service_name":"s","sensitive":false}]}"#)
+                .unwrap();
         assert_eq!(old.services[0].template, None);
         assert_eq!(old.services[0].description, None);
         assert_eq!(old.services[0].version, None);
@@ -193,10 +195,8 @@ mod tests {
         let back: EventSchemaDecl = serde_json::from_str(&json).unwrap();
         assert_eq!(decl, back);
         // 缺省兼容：无 direction/description 字段（老格式/手写 JSON）→ push + None
-        let old: EventSchemaDecl = serde_json::from_str(
-            r#"{"name":"e","schema_ref":"https://x/s.json"}"#,
-        )
-        .unwrap();
+        let old: EventSchemaDecl =
+            serde_json::from_str(r#"{"name":"e","schema_ref":"https://x/s.json"}"#).unwrap();
         assert_eq!(old.direction, EventDirection::Push);
         assert_eq!(old.description, None);
     }

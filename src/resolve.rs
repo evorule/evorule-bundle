@@ -199,7 +199,11 @@ mod tests {
         vec!["v1".into(), "v2".into(), "v2.p1".into()]
     }
 
-    fn selection(mode: VersionSelectionMode, pinned: Option<&str>, include_patch: Option<bool>) -> VersionSelection {
+    fn selection(
+        mode: VersionSelectionMode,
+        pinned: Option<&str>,
+        include_patch: Option<bool>,
+    ) -> VersionSelection {
         VersionSelection {
             mode,
             pinned_version: pinned.map(String::from),
@@ -231,24 +235,40 @@ mod tests {
     fn test_auto_half_open_effective_to() {
         // v1 2024-01-01 ~ 2025-01-01（不含）；v2 2025-01-01 起
         let rs = vec![
-            EffectiveRange { version: "v1".into(), effective_from: "2024-01-01".into(), effective_to: Some("2025-01-01".into()) },
-            EffectiveRange { version: "v2".into(), effective_from: "2025-01-01".into(), effective_to: None },
+            EffectiveRange {
+                version: "v1".into(),
+                effective_from: "2024-01-01".into(),
+                effective_to: Some("2025-01-01".into()),
+            },
+            EffectiveRange {
+                version: "v2".into(),
+                effective_from: "2025-01-01".into(),
+                effective_to: None,
+            },
         ];
-        assert_eq!(VersionResolver::resolve_auto("2024-12-31", &rs, &chain_v2_p1()).unwrap(), "v1");
+        assert_eq!(
+            VersionResolver::resolve_auto("2024-12-31", &rs, &chain_v2_p1()).unwrap(),
+            "v1"
+        );
         // 2025-01-01：effective_to 不含 → 已切到 v2
-        assert_eq!(VersionResolver::resolve_auto("2025-01-01", &rs, &chain_v2_p1()).unwrap(), "v2.p1");
+        assert_eq!(
+            VersionResolver::resolve_auto("2025-01-01", &rs, &chain_v2_p1()).unwrap(),
+            "v2.p1"
+        );
     }
 
     #[test]
     fn test_auto_no_effective_version() {
         // 早于所有生效范围
-        let err = VersionResolver::resolve_auto("2023-12-31", &ranges(), &chain_v2_p1()).unwrap_err();
+        let err =
+            VersionResolver::resolve_auto("2023-12-31", &ranges(), &chain_v2_p1()).unwrap_err();
         assert!(matches!(err, ResolveError::NoEffectiveVersion { .. }));
     }
 
     #[test]
     fn test_auto_rejects_invalid_date() {
-        let err = VersionResolver::resolve_auto("2024/06/01", &ranges(), &chain_v2_p1()).unwrap_err();
+        let err =
+            VersionResolver::resolve_auto("2024/06/01", &ranges(), &chain_v2_p1()).unwrap_err();
         assert!(matches!(err, ResolveError::InvalidDate(_)));
         // 范围日期非法同样显式报错
         let bad = vec![EffectiveRange {
@@ -264,8 +284,16 @@ mod tests {
     fn test_auto_duplicate_main_rejected() {
         // 同一主版本两个生效范围 → 解析不确定，显式报错
         let dup = vec![
-            EffectiveRange { version: "v2".into(), effective_from: "2025-01-01".into(), effective_to: None },
-            EffectiveRange { version: "v2".into(), effective_from: "2025-06-01".into(), effective_to: None },
+            EffectiveRange {
+                version: "v2".into(),
+                effective_from: "2025-01-01".into(),
+                effective_to: None,
+            },
+            EffectiveRange {
+                version: "v2".into(),
+                effective_from: "2025-06-01".into(),
+                effective_to: None,
+            },
         ];
         let err = VersionResolver::resolve_auto("2025-06-01", &dup, &chain_v2_p1()).unwrap_err();
         assert!(matches!(err, ResolveError::DuplicateMain(_)));
@@ -276,7 +304,10 @@ mod tests {
         let chain = chain_v2_p1();
         // 默认 include_patch=true：pinned v2 → 最新 Patch v2.p1
         let s = selection(VersionSelectionMode::Pinned, Some("v2"), None);
-        assert_eq!(VersionResolver::resolve_pinned(&s, &chain).unwrap(), "v2.p1");
+        assert_eq!(
+            VersionResolver::resolve_pinned(&s, &chain).unwrap(),
+            "v2.p1"
+        );
     }
 
     #[test]
@@ -287,7 +318,10 @@ mod tests {
         assert_eq!(VersionResolver::resolve_pinned(&s, &chain).unwrap(), "v2");
         // 精确锁定某 Patch
         let s = selection(VersionSelectionMode::Pinned, Some("v2.p1"), Some(false));
-        assert_eq!(VersionResolver::resolve_pinned(&s, &chain).unwrap(), "v2.p1");
+        assert_eq!(
+            VersionResolver::resolve_pinned(&s, &chain).unwrap(),
+            "v2.p1"
+        );
     }
 
     #[test]
@@ -312,9 +346,15 @@ mod tests {
         let chain = chain_v2_p1();
         // auto 分发
         let s = selection(VersionSelectionMode::AutoByEffectiveDate, None, None);
-        assert_eq!(VersionResolver::resolve(&s, "2025-06-01", &ranges(), &chain).unwrap(), "v2.p1");
+        assert_eq!(
+            VersionResolver::resolve(&s, "2025-06-01", &ranges(), &chain).unwrap(),
+            "v2.p1"
+        );
         // pinned 分发
         let s = selection(VersionSelectionMode::Pinned, Some("v2"), Some(false));
-        assert_eq!(VersionResolver::resolve(&s, "2025-06-01", &ranges(), &chain).unwrap(), "v2");
+        assert_eq!(
+            VersionResolver::resolve(&s, "2025-06-01", &ranges(), &chain).unwrap(),
+            "v2"
+        );
     }
 }

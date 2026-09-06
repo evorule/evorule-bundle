@@ -52,10 +52,7 @@ impl Version {
             .map_err(|_| VersionError::BadFormat(raw.into()))?;
         let patch = match patch_s {
             Some("") => return Err(VersionError::BadFormat(raw.into())),
-            Some(p) => Some(
-                p.parse()
-                    .map_err(|_| VersionError::BadFormat(raw.into()))?,
-            ),
+            Some(p) => Some(p.parse().map_err(|_| VersionError::BadFormat(raw.into()))?),
             None => None,
         };
         Ok(Self { main, patch })
@@ -270,15 +267,39 @@ mod tests {
 
     #[test]
     fn test_version_parse_display() {
-        assert_eq!(Version::parse("v1").unwrap(), Version { main: 1, patch: None });
-        assert_eq!(Version::parse("v2.p1").unwrap(), Version { main: 2, patch: Some(1) });
+        assert_eq!(
+            Version::parse("v1").unwrap(),
+            Version {
+                main: 1,
+                patch: None
+            }
+        );
+        assert_eq!(
+            Version::parse("v2.p1").unwrap(),
+            Version {
+                main: 2,
+                patch: Some(1)
+            }
+        );
         assert_eq!(Version::parse("v2.p1").unwrap().to_string(), "v2.p1");
         assert_eq!(Version::parse("v1").unwrap().to_string(), "v1");
         // 非法格式
-        assert!(matches!(Version::parse("1"), Err(VersionError::BadFormat(_))));
-        assert!(matches!(Version::parse("v"), Err(VersionError::BadFormat(_))));
-        assert!(matches!(Version::parse("v2.p"), Err(VersionError::BadFormat(_))));
-        assert!(matches!(Version::parse("vx"), Err(VersionError::BadFormat(_))));
+        assert!(matches!(
+            Version::parse("1"),
+            Err(VersionError::BadFormat(_))
+        ));
+        assert!(matches!(
+            Version::parse("v"),
+            Err(VersionError::BadFormat(_))
+        ));
+        assert!(matches!(
+            Version::parse("v2.p"),
+            Err(VersionError::BadFormat(_))
+        ));
+        assert!(matches!(
+            Version::parse("vx"),
+            Err(VersionError::BadFormat(_))
+        ));
     }
 
     #[test]

@@ -14,7 +14,8 @@
 use serde_json::Value;
 
 /// 6 元指令白名单（SSOT：`evorule-tcb/src/executor.rs` dispatch ↔ `_shared/v1.0.json` enum）
-pub const META_INSTRUCTION_TYPES: [&str; 6] = ["set", "push", "branch", "io_request", "collect", "merge"];
+pub const META_INSTRUCTION_TYPES: [&str; 6] =
+    ["set", "push", "branch", "io_request", "collect", "merge"];
 
 /// 校验规则体结构。支持 `{"transform": [...]}` 或裸 transform 数组。
 /// 失败时返回错误列表（非空），成功返回 `Ok(())`。
@@ -24,7 +25,9 @@ pub fn validate_rule_structure(input: &Value) -> Result<(), Vec<String>> {
     } else if let Some(t) = input.as_array() {
         t
     } else {
-        return Err(vec!["rule_body 必须是 transform 数组或含 transform 字段的对象".to_string()]);
+        return Err(vec![
+            "rule_body 必须是 transform 数组或含 transform 字段的对象".to_string(),
+        ]);
     };
 
     if transform.is_empty() {
@@ -239,7 +242,16 @@ mod tests {
     #[test]
     fn 路径语法负向_拒绝() {
         // 仅"形如路径"的字符串（含 . 或 [ 或 __ 前缀）受轻量门禁检查
-        for bad in ["x.", ".x", "x..y", "items[0]..name", "[0", "[]", "[abc]", "[0]abc"] {
+        for bad in [
+            "x.",
+            ".x",
+            "x..y",
+            "items[0]..name",
+            "[0",
+            "[]",
+            "[abc]",
+            "[0]abc",
+        ] {
             let v = json!({"transform": [{"type": "set", "params": {"attr": bad, "operation": "set", "value": 1}}]});
             assert!(!ok(v), "应拒绝路径: {bad}");
         }
@@ -275,8 +287,13 @@ mod tests {
 
     #[test]
     fn 路径语法正向_通过() {
-        for good in ["__exec__.payload.$schema", "data[0]", "data.[0]", "payload.a.b[2].c",
-                     "__exec__.payload.__io_results__.call_service"] {
+        for good in [
+            "__exec__.payload.$schema",
+            "data[0]",
+            "data.[0]",
+            "payload.a.b[2].c",
+            "__exec__.payload.__io_results__.call_service",
+        ] {
             let v = json!({"transform": [{"type": "set", "params": {"attr": good, "operation": "set", "value": 1}}]});
             assert!(ok(v), "应通过路径: {good}");
         }
