@@ -16,7 +16,7 @@
 
 ### 文档
 
-- README 与实现对齐：哈希字段修正为 BLAKE3（经 evorule-hash，`blake3:` 前缀）；测试计数修正为 47 passed；模块结构补 `structure.rs`；生态表 server 状态更新为 v0.3.2（T2/T3 已落地）、主仓版本对齐 v0.3.2
+- README 与实现对齐：哈希字段修正为 BLAKE3（经 evorule-hash，`blake3:` 前缀）；测试计数修正为 47 passed；模块结构补 `structure.rs`；生态表 server 状态更新为 v0.3.2、主仓版本对齐 v0.3.2
 - 新增"解析现状"说明：evorule-rule 与 evorule-server 均已通过 `[patch.crates-io]` 指向本仓本地源，两侧校验口径强对称
 - 建立版本控制基线与 CHANGELOG
 
