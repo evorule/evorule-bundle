@@ -1,35 +1,62 @@
 <!--
   Copyright 2026 EvoRule Project
-  SPDX-License-Identifier: Apache-2.0
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU Affero General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU Affero General Public License for more details.
+
+  You should have received a copy of the GNU Affero General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+  SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
-# EvoRule Bundle — 声明
+# EvoRule — 声明
 
 **版权所有 (c) 2026 EvoRule Project**
 
-本 crate（`evorule-bundle`）是 EvoRule 生态的一部分，提供快照包（`DatasetBundle`）共享校验库。
+本项目包含由 EvoRule Project 开发的软件。
 
-## 协议
+## 协议选择指引
+
+| 你是 | 走哪条路 | 链接 |
+|---|---|---|
+| 个人 / 自由职业者 / 开源项目 | **AGPL**（免费） | [LICENSE](LICENSE) |
+| 年营收 < $10M 企业 / 政府 / 高校 / 非营利 | **FCL**（免费闭源豁免） | [FREE_COMMERCIAL_LICENSE.md](FREE_COMMERCIAL_LICENSE.md) |
+| 愿意开源修改版的任意实体 | **AGPL**（免费） | [LICENSE](LICENSE) |
+| 年营收 ≥ $10M 且不愿开源 | **商业许可**（付费） | [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) · <evorulelab@gmail.com> |
+
+> 完整决策指引见 [DUAL_LICENSE.md](DUAL_LICENSE.md)。
+
+## 协议分离
 
 | 资产 | 协议 | 说明 |
 |---|---|---|
-| **代码**（v0.2.1 起） | Apache-2.0 | 详见 [LICENSE](LICENSE) |
-| 代码（v0.2.0 历史版本） | AGPL-3.0-or-later | 已发布版本不可撤回，历史版本仍适用原许可 |
+| **代码** | AGPL-3.0-or-later | 详见 [LICENSE](LICENSE) |
+| **`core_eval.json`** | **CC0 1.0 公共领域** | EvoRule 宪法（解释器规范）—— 任何人都可以自由实现兼容的 EvoRule 引擎，无需保留版权声明。官方文本：<https://creativecommons.org/publicdomain/zero/1.0/legalcode.txt> ；仓内副本：[LICENSES/core_eval-CC0-1.0.txt](LICENSES/core_eval-CC0-1.0.txt) |
 
-Apache-2.0 授予对本 crate 代码的使用权，**不授予 EvoRule 名称与商标的使用权**
-（商标说明见 [evorule-system-rules TRADEMARK.md](https://gitee.com/evorule/evorule-system-rules)）。
+**协议分离的战略意义**：
 
-## 定位
-
-治理侧（evorule-rule）与执行侧（evorule-server）之间解耦的**唯一传输契约**——
-快照包类型与 6 项导入校验链的**单一事实来源（SSOT）**，两仓以钉版依赖消费，避免校验口径漂移。
+- 代码（copyleft, AGPL-3.0）：保护 EvoRule 当前实现，阻止大厂"白嫖 fork 后卖闭源 SaaS"
+- 宪法（public domain, CC0-1.0）：鼓励广泛采用，任何人都可以基于宪法实现兼容引擎
+- 这把"标准"和"实现"分开，类似 HTTP 规范（W3C 公共）vs Apache HTTP Server（版权）
 
 ## 设计原则
 
-- 单一事实来源：类型与校验链只在此仓实现一次，治理侧/执行侧共同消费
-- 确定性校验：失败显式报错，不静默降级
-- 零转译：`entries[].rule_body` 原样可执行，无翻译层
-- 裁剪即视图：裁剪 = 原版本视图，不新造版本链
+EvoRule 的核心设计原则：
+
+- 规则即数据（可读、可审计、可序列化）
+- 自解释引擎（解释器本身也是可被审计的规则）
+- 完全可追溯（每次状态变化留下因果链）
+- 零隐藏逻辑（解释器可读 + 可审计）
+- 不可变状态（基于不可变数据结构）
+- 确定性执行（相同输入 = 永远相同输出）
 
 ## 联系信息
 
