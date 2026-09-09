@@ -1,10 +1,11 @@
 <!--
   Copyright 2026 EvoRule Project
 
-  SPDX-License-Identifier: Apache-2.0
+  SPDX-License-Identifier: AGPL-3.0-or-later
 
-  This file is part of EvoRule. Code since v0.2.1 is licensed under Apache-2.0;
-  earlier releases were published under AGPL-3.0-or-later.
+  This file is part of EvoRule. Code is licensed under AGPL-3.0-or-later;
+  see the 许可证 section below for dual-license and historical notes
+  (v0.2.1 briefly used Apache-2.0, reverted to AGPL-3.0-or-later).
 -->
 
 # evorule-bundle
@@ -34,7 +35,7 @@
 |---|---|---|
 | [evorule](https://gitee.com/evorule/evorule) | 基础仓（TCB + Reactor + Governance + CLI） | v0.3.2（已发布） |
 | [evorule-rule](https://gitee.com/evorule/evorule-rule) | 数据治理扩展（规则资产库 + HTTP API） | v0.2.0 |
-| **evorule-bundle**（本仓） | 快照包共享校验（纯 lib） | **v0.2.0（2026-08-24 开仓）** |
+| **evorule-bundle**（本仓） | 快照包共享校验（纯 lib） | **v0.3.0** |
 | [evorule-server](https://gitee.com/evorule/evorule-server) | 执行侧 HTTP server（消费本仓校验） | v0.3.2（T2/T3 已落地：bundle 导入校验 + 原子落盘） |
 
 ## 提供的能力
@@ -77,7 +78,7 @@ src/
 
 ```toml
 [dependencies]
-evorule-bundle = "0.2.0"
+evorule-bundle = "0.3.0"
 
 # 本地开发：用 path 覆盖 crates.io 上的 evorule-bundle（与 evorule-server 钉核心 crates 同模式）
 [patch.crates-io]
@@ -86,7 +87,7 @@ evorule-bundle = { path = "../evorule-bundle" }
 
 ## 当前状态（2026-08-24 开仓）
 
-- **版本**：v0.2.0 — 类型 + 6 项校验链 + 裁剪 + 5 类模型迁入完成
+- **版本**：v0.3.0 — 类型 + 6 项校验链 + 裁剪 + 5 类模型迁入完成
 - **测试**：47 passed，0 failed（`cargo test --lib`，含 structure.rs 结构门禁 12 项）
 - **依赖**：serde / serde_json / thiserror / evorule-hash（纯校验，无网络 / 无存储 / 无 I/O）
 - **钉版约定**：语义版本独立发布；`validate` 被两仓共用 → API 变更即 MAJOR，两仓需同步升级 tag
