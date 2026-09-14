@@ -2,7 +2,7 @@
 //!
 //! 治理侧（evorule-rule 入口）与执行侧（evorule-server）共用，把"是否可执行"从运行时
 //! 问题提前到构建期/治理期。拦截 P0-01 主错误：
-//! - 非法元指令类型（不在 6 元指令白名单）→ 防止指令层类型混入元指令层；
+//! - 非法元指令类型（不在元指令白名单，5 种）→ 防止指令层类型混入元指令层；
 //! - 单数 `__io_result__`（引擎写复数 `__io_results__`）→ 防止运行时 PathResolutionFailed；
 //! - 路径语法错误（空段 / 非法索引 / 非法字符）。
 //!
@@ -13,9 +13,12 @@
 
 use serde_json::Value;
 
-/// 6 元指令白名单（SSOT：`evorule-tcb/src/executor.rs` dispatch ↔ `_shared/v1.0.json` enum）
-pub const META_INSTRUCTION_TYPES: [&str; 6] =
-    ["set", "push", "branch", "io_request", "collect", "merge"];
+/// 元指令白名单（SSOT：`evorule-tcb/src/executor.rs` dispatch ↔ `_shared/v1.0.json` enum；
+/// 对齐闸：evorule-system-rules `tools/check_whitelist_sync.py` 第四向校验，2026-09-15 接入）。
+/// 69 号专项（v0.6.0）collect/merge 退役；enforce 属元指令第五种（tier=meta 语义，
+/// 由 server 装载门禁管控其进入，本门禁只管"是否元指令形态"）。
+pub const META_INSTRUCTION_TYPES: [&str; 5] =
+    ["branch", "set", "push", "io_request", "enforce"];
 
 /// 校验规则体结构。支持 `{"transform": [...]}` 或裸 transform 数组。
 /// 失败时返回错误列表（非空），成功返回 `Ok(())`。
@@ -221,6 +224,33 @@ mod tests {
         assert!(!ok(v));
         let v2 = json!({"transform": [{"type": "save_memory", "params": {}}]});
         assert!(!ok(v2));
+    }
+
+    #[test]
+    fn collect_merge_已退役_拒绝() {
+        // 69 号专项（v0.6.0）collect/merge 退役；bundle 侧白名单 2026-09-15 同步收窄
+        for ty in ["collect", "merge"] {
+            let v = json!({"transform": [{"type": ty, "params": {}}]});
+            assert!(!ok(v), "{ty} 已退役，应拒绝");
+        }
+    }
+
+    #[test]
+    fn enforce_元指令_形态通过() {
+        // enforce 为元指令第五种（SSOT = TCB dispatch 全量）；tier=meta 进入管控属
+        // server 装载门禁（UV-147），本轻量门禁只校验形态
+        let v = json!({"transform": [{"type": "enforce", "params": {}}]});
+        assert!(ok(v));
+    }
+
+    #[test]
+    fn 白名单_ssot_快照() {
+        // 对齐闸的仓内锚点：TCB dispatch 变更时本测试先红（check_whitelist_sync.py
+        // 为跨仓权威校验，此处快照防仓内无声漂移）
+        assert_eq!(
+            META_INSTRUCTION_TYPES,
+            ["branch", "set", "push", "io_request", "enforce"]
+        );
     }
 
     #[test]

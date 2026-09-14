@@ -70,7 +70,7 @@ src/
 ├── resolve.rs      # VersionResolver/ResolveError/EffectiveRange
 ├── dependency.rs   # DataDependencies/ServiceDecl/SourceBinding/ServiceTemplate/IoContract/InputDecl
 ├── provenance.rs   # Provenance
-├── structure.rs    # 轻量结构门禁（6 元指令白名单 / __io_results__ 单数 / 路径语法）
+├── structure.rs    # 轻量结构门禁（元指令白名单 5 种，SSOT 对齐 TCB dispatch；__io_results__ 单数 / 路径语法）
 └── symbols.rs      # io_services_from_rule_body
 ```
 
