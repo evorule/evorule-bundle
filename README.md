@@ -109,7 +109,7 @@ evorule-bundle = { path = "../evorule-bundle" }
 - **Gitee**：<https://gitee.com/evorule/evorule-bundle>
 - **Gitee 父仓**：<https://gitee.com/evorule/evorule>
 - **邮箱**：evorulelab@gmail.com
-- **组织**：EvoRule Lab
+- **组织**：EvoRule
 
 ---
 
