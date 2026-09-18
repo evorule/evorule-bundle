@@ -17,8 +17,7 @@ use serde_json::Value;
 /// 对齐闸：evorule-system-rules `tools/check_whitelist_sync.py` 第四向校验，2026-09-15 接入）。
 /// 69 号专项（v0.6.0）collect/merge 退役；enforce 属元指令第五种（tier=meta 语义，
 /// 由 server 装载门禁管控其进入，本门禁只管"是否元指令形态"）。
-pub const META_INSTRUCTION_TYPES: [&str; 5] =
-    ["branch", "set", "push", "io_request", "enforce"];
+pub const META_INSTRUCTION_TYPES: [&str; 5] = ["branch", "set", "push", "io_request", "enforce"];
 
 /// 校验规则体结构。支持 `{"transform": [...]}` 或裸 transform 数组。
 /// 失败时返回错误列表（非空），成功返回 `Ok(())`。
