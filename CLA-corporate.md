@@ -163,7 +163,7 @@
 Gitee 官方 CLA 目前**没有企业（Corporate）签署入口**，只能签个人 CLA。因此企业贡献者**必须走人工流程**，不能依赖在线点击：
 
 1. **下载**本 `CLA-corporate.md`；
-2. **填写**文末“签署”表格（公司法定名称、统一社会信用代码 / 注册号、授权代表、职务、公司盖章 / 授权代表签名）；
+2. **填写**文末"签署"表格（公司法定名称、统一社会信用代码 / 注册号、授权代表、职务、公司盖章 / 授权代表签名）；
 3. **发送**扫描件或填写版至 <evorulelab@gmail.com>（主题加 `[CLA Corporate]`）；
 4. 版权人（EvoRule Project）**人工审阅**并归档后，贵公司即受本协议约束——其在雇佣范围内提交的所有贡献均适用本协议。
 
@@ -198,7 +198,7 @@ Gitee 官方 CLA 目前**没有企业（Corporate）签署入口**，只能签�
 - **项目**: EvoRule
 - **版权人**: EvoRule Project
 - **邮箱**: <evorulelab@gmail.com>
-- **Gitee**: <https://gitee.com/evorule/evorule-bundle>
+- **Gitee**: <https://gitee.com/evorule/evorule>
 
 ---
 
