@@ -1,4 +1,4 @@
-//! 符号提取（31 号 §9-3）：从 rule_body 提取 io_request.service_name 符号集
+//! 符号提取（设计文档 §9-3）：从 rule_body 提取 io_request.service_name 符号集
 //!
 //! 纯函数，不依赖治理侧 schema / RuleDataset / RuleEntry —— 快照包自洽校验所需。
 //! SSOT：本函数唯一来源在 evorule-bundle，evorule-rule 的 `Validator::io_services_from_rule_body`

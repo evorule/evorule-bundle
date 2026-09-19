@@ -15,7 +15,7 @@ use serde_json::Value;
 
 /// 元指令白名单（SSOT：`evorule-tcb/src/executor.rs` dispatch ↔ `_shared/v1.0.json` enum；
 /// 对齐闸：evorule-system-rules `tools/check_whitelist_sync.py` 第四向校验，2026-09-15 接入）。
-/// 69 号专项（v0.6.0）collect/merge 退役；enforce 属元指令第五种（tier=meta 语义，
+/// 规则清理批次（v0.6.0）collect/merge 退役；enforce 属元指令第五种（tier=meta 语义，
 /// 由 server 装载门禁管控其进入，本门禁只管"是否元指令形态"）。
 pub const META_INSTRUCTION_TYPES: [&str; 5] = ["branch", "set", "push", "io_request", "enforce"];
 
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn collect_merge_已退役_拒绝() {
-        // 69 号专项（v0.6.0）collect/merge 退役；bundle 侧白名单 2026-09-15 同步收窄
+        // 规则清理批次（v0.6.0）collect/merge 退役；bundle 侧白名单 2026-09-15 同步收窄
         for ty in ["collect", "merge"] {
             let v = json!({"transform": [{"type": ty, "params": {}}]});
             assert!(!ok(v), "{ty} 已退役，应拒绝");
@@ -237,7 +237,7 @@ mod tests {
     #[test]
     fn enforce_元指令_形态通过() {
         // enforce 为元指令第五种（SSOT = TCB dispatch 全量）；tier=meta 进入管控属
-        // server 装载门禁（UV-147），本轻量门禁只校验形态
+        // server 装载门禁（回归验证），本轻量门禁只校验形态
         let v = json!({"transform": [{"type": "enforce", "params": {}}]});
         assert!(ok(v));
     }

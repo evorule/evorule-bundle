@@ -1,21 +1,21 @@
-//! 数据依赖声明（31 号 §6；完整设计在 35 号 决策点⑤）
+//! 数据依赖声明（设计文档 §6；完整设计在 既定设计决策）
 //!
 //! - 数据集级 `data_dependencies`：声明规则运行所需数据来源（推入式 inputs / 拉取式 services）；
 //! - 条目级 `data_source_binding`：将 `rule_body` 内的 service_name 符号映射到具体服务；
 //! - 凭据强约束：声明不存端点/凭据（凭据永不入库，只走执行侧密钥管理）。
 //!
-//! 符号三方一致（31 号 §9-3）：
+//! 符号三方一致（设计文档 §9-3）：
 //! `rule_body.io_request.service_name` ≡ 条目 binding.service_name ≡ 数据集声明 services[].service_name
 //!
 //! SSOT：依赖模型唯一来源在本 crate（evorule-bundle），evorule-rule 侧 re-export。
-//! 治理专属的 `ServiceTemplateRecord`（44 号 §7 deps/templates 注册）留在 evorule-rule。
+//! 治理专属的 `ServiceTemplateRecord`（设计文档 §7 deps/templates 注册）留在 evorule-rule。
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// 推入式输入声明（事件/Fact 形态，供沙箱生成合成事件；35 号 §4 完整 schema）
+/// 推入式输入声明（事件/Fact 形态，供沙箱生成合成事件；设计文档 §4 完整 schema）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InputDecl {
     pub name: String,
@@ -24,7 +24,7 @@ pub struct InputDecl {
     pub schema: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// 事件长期为空是否视为异常（35 号 §4，默认 false；开放点② 建议 false）
+    /// 事件长期为空是否视为异常（设计文档 §4，默认 false；开放点② 建议 false）
     #[serde(default)]
     pub empty_allowed: bool,
 }
@@ -38,7 +38,7 @@ pub enum EventDirection {
     Push,
 }
 
-/// 数据集级 push 事件 schema 声明（段B B5，14 号）
+/// 数据集级 push 事件 schema 声明（段B B5，历史批次）
 ///
 /// - 声明数据集消费的推入式事件的**形态契约**（name + schema_ref + direction），
 ///   供消费方做契约发现；回写事件（RuleFailureEvent）定型不变，与此声明无关；
@@ -58,7 +58,7 @@ pub struct EventSchemaDecl {
     pub description: Option<String>,
 }
 
-/// 无凭据服务模板（35 号 §5，决策点⑤ 方案 B）
+/// 无凭据服务模板（设计文档 §5，既定设计决策 方案 B）
 ///
 /// 模板 = 端点形状 + 参数占位 + 说明，**不含真实端点/密钥**；实际值由消费者在
 /// 执行侧 service_registry 填写（层 2 绑定动作，§3）。
@@ -66,10 +66,10 @@ pub struct EventSchemaDecl {
 pub struct ServiceTemplate {
     /// 允许占位符（如 "https://{base}/api/payroll"），实际值由消费者填
     pub url: String,
-    /// 默认 POST（35 号 §3）
+    /// 默认 POST（设计文档 §3）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
-    /// 鉴权头模板（占位符形式，如 `{client_id}`）；BTreeMap 保证序列化确定性（36 号内容哈希）
+    /// 鉴权头模板（占位符形式，如 `{client_id}`）；BTreeMap 保证序列化确定性（内容哈希）
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub headers_templates: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -93,7 +93,7 @@ pub struct ServiceDecl {
     pub sensitive: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// 无凭据服务模板（可选，帮助消费者配置；35 号 §5）
+    /// 无凭据服务模板（可选，帮助消费者配置；设计文档 §5）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template: Option<ServiceTemplate>,
 }

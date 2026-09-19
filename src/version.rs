@@ -1,4 +1,4 @@
-//! 版本与法规锚（31 号 §3 versioning / law_ref / version_selection；决策点③）
+//! 版本与法规锚（设计文档 §3 versioning / law_ref / version_selection；既定设计决策）
 //!
 //! - 版本号：两级版本号（v1 / v2 / v2.p1），主版本 + Patch；
 //! - 版本选择双模式：`auto_by_effective_date`（按生效日期自动切换，合规默认）| `pinned`（显式锁定）；
@@ -12,7 +12,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// 版本错误（决策点②/③：版本号格式、链单调性、可复用性）
+/// 版本错误（既定设计决策：版本号格式、链单调性、可复用性）
 #[derive(Debug, Error, PartialEq)]
 pub enum VersionError {
     #[error("非法版本号 `{0}`（需形如 v1 / v2.p1）")]
@@ -25,7 +25,7 @@ pub enum VersionError {
     ChainTailMismatch { chain_tail: String, current: String },
 }
 
-/// 两级版本号（决策点③）：主版本 + Patch
+/// 两级版本号（既定设计决策）：主版本 + Patch
 ///
 /// - 主版本：法规条款级变化 → 升版（v1 → v2）；
 /// - Patch：内部小改（法规语义未变）→ Patch +1（v2 → v2.p1）；
@@ -98,9 +98,9 @@ impl Ord for Version {
     }
 }
 
-/// 变更线（决策点③）：升版 / Patch
+/// 变更线（既定设计决策）：升版 / Patch
 ///
-/// 判定标准（33 号 §3）：**是否改变规则对外业务语义**——
+/// 判定标准（设计文档 §3）：**是否改变规则对外业务语义**——
 /// 生效日期/阈值/条款内容变更 → Major（升版）；措辞/格式/连接器引用/bug 修复 → Patch。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -136,14 +136,14 @@ pub struct VersionSelection {
     /// pinned 时锁定的版本（如 "v2" / "v2.p1"）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pinned_version: Option<String>,
-    /// pinned 时 Patch 是否跟进（33 号 §4 合流语义）：默认 `true`
+    /// pinned 时 Patch 是否跟进（设计文档 §4 合流语义）：默认 `true`
     /// （同主版本下采用最新 Patch）；`false` = 完全锁定到指定版本（取证/复现）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pinned_include_patch: Option<bool>,
 }
 
 impl VersionSelection {
-    /// `pinned_include_patch` 默认值 = `true`（33 号 §4）
+    /// `pinned_include_patch` 默认值 = `true`（设计文档 §4）
     pub fn pinned_include_patch(&self) -> bool {
         self.pinned_include_patch.unwrap_or(true)
     }
@@ -184,7 +184,7 @@ impl Default for Versioning {
 }
 
 impl Versioning {
-    /// 生成新版本（决策点③ 两级变更线）：升版（Major）或 Patch。
+    /// 生成新版本（既定设计决策 两级变更线）：升版（Major）或 Patch。
     ///
     /// 版本链只追加、不可复用：新版本必须高于当前且不在链中。
     /// 返回新版本号；更新 `current` 并追加 `chain`。
@@ -195,7 +195,7 @@ impl Versioning {
             BumpKind::Patch => current.bump_patch(),
         };
         let next_str = next.to_string();
-        // 版本号不可复用 + 链单调（32 号 §3 / 33 号 §8）
+        // 版本号不可复用 + 链单调（设计文档 §3 / 设计文档 §8）
         if next <= current || self.chain.iter().any(|v| v == &next_str) {
             return Err(VersionError::NotAdvancing {
                 current: self.current.clone(),
@@ -210,7 +210,7 @@ impl Versioning {
         })
     }
 
-    /// 版本链一致性校验（32 号 §3 / 33 号 §8）：
+    /// 版本链一致性校验（设计文档 §3 / 设计文档 §8）：
     /// - 格式合法；- 链单调递增、无重复；- `current` 必须是链尾。
     pub fn validate(&self) -> Result<(), VersionError> {
         let mut prev: Option<Version> = None;

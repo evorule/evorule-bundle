@@ -1,7 +1,7 @@
-//! Provenance 溯源（31 号 §5）
+//! Provenance 溯源（设计文档 §5）
 //!
-//! 溯源直接映射权限链 cause 与审计链回放（28 号 §3.3）。
-//! `effective_from` 是版本选择 `auto_by_effective_date` 的依据（决策点③）。
+//! 溯源直接映射权限链 cause 与审计链回放（设计文档 §3.3）。
+//! `effective_from` 是版本选择 `auto_by_effective_date` 的依据（既定设计决策）。
 //! 法规更新 → 新条目版本 + 新 effective_from，旧版本保留历史。
 //!
 //! SSOT：溯源模型唯一来源在本 crate（evorule-bundle），evorule-rule 侧 re-export。

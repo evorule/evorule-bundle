@@ -1,12 +1,12 @@
-//! 版本解析算法（决策点③ · 33 号 §4/§5）：auto_by_effective_date | pinned
+//! 版本解析算法（既定设计决策 · 设计文档 §4/§5）：auto_by_effective_date | pinned
 //!
 //! - `auto_by_effective_date`：按事件业务日期自动选择当时生效的最高主版本（含其最新 Patch）；
 //! - `pinned`：显式锁定版本，`pinned_include_patch` 决定 Patch 是否跟进（默认 true）；
 //! - **历史回放确定性**：给定事件日期 T 解析出的版本固定，不随未来版本变化（审计可重算）；
 //! - **边界（不静默降级）**：T 无生效版本 → 显式报错，不静默用旧版本。
 //!
-//! 输入说明（33 号 §5）：本模块是纯函数，每主版本的生效范围 `EffectiveRange` 由调用方提供
-//! —— 来源：45 号 `dataset_versions` 快照表（effective_from/to 索引）或 36 号快照包内嵌配置。
+//! 输入说明（设计文档 §5）：本模块是纯函数，每主版本的生效范围 `EffectiveRange` 由调用方提供
+//! —— 来源：历史批次 `dataset_versions` 快照表（effective_from/to 索引）或历史批次快照包内嵌配置。
 //!
 //! SSOT：版本解析唯一来源在本 crate（evorule-bundle），evorule-rule 侧 re-export。
 
@@ -41,14 +41,14 @@ pub enum ResolveError {
     Version(#[from] VersionError),
 }
 
-/// 主版本生效范围（33 号 §3：Patch 不改变生效日期，范围按主版本挂载）
+/// 主版本生效范围（设计文档 §3：Patch 不改变生效日期，范围按主版本挂载）
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectiveRange {
     /// 主版本，如 "v1" / "v2"
     pub version: String,
     /// 生效起始（含），ISO YYYY-MM-DD
     pub effective_from: String,
-    /// 失效日（不含）；None = ∞（33 号 §8）
+    /// 失效日（不含）；None = ∞（设计文档 §8）
     pub effective_to: Option<String>,
 }
 
@@ -71,7 +71,7 @@ impl VersionResolver {
         }
     }
 
-    /// `auto_by_effective_date`（33 号 §5 算法）
+    /// `auto_by_effective_date`（设计文档 §5 算法）
     ///
     /// 1. 候选主版本 = { v : effective_from ≤ T 且 effective_to > T }（to=None 视为 ∞）；
     /// 2. 取候选最高主版本 V_main；
@@ -117,7 +117,7 @@ impl VersionResolver {
         })
     }
 
-    /// `pinned`（33 号 §4 合流语义）
+    /// `pinned`（设计文档 §4 合流语义）
     ///
     /// - `pinned_include_patch = true`（默认）：只锁主版本语义，取同主版本下最新 Patch；
     /// - `pinned_include_patch = false`：完全锁定到指定版本（取证/复现）。

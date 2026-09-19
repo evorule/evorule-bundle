@@ -1,10 +1,10 @@
-//! 快照包消费层（决策点⑥ · 36 号）：类型 + 导入校验 + 裁剪
+//! 快照包消费层（既定设计决策 ·历史批次）：类型 + 导入校验 + 裁剪
 //!
 //! - **DatasetBundle（快照包）**：资产 ↔ 执行解耦的唯一传输形态（单文件 JSON），只读产物；
 //! - **导入校验**（evorule-server 侧前置）：schema → 防篡改 → 符号三方一致 → 版本解析 → 闸门一证据；
-//!   落 workspace 与热加载属执行侧（27 号真热加载），本层返回校验通过的运行配置；
-//! - **裁剪**（服务公司）：裁剪 = 原版本视图，**不新造版本链**（决策点②），依赖声明随裁剪收缩；
-//! - **回写通道 MVP 不实现**：只定 schema（36 号 §6），不实现采集与闭环。
+//!   落 workspace 与热加载属执行侧（历史批次真热加载），本层返回校验通过的运行配置；
+//! - **裁剪**（服务公司）：裁剪 = 原版本视图，**不新造版本链**（既定设计决策），依赖声明随裁剪收缩；
+//! - **回写通道 MVP 不实现**：只定 schema（设计文档 §6），不实现采集与闭环。
 //!
 //! 零转译：`entries[].rule_body` 原样 = evorule-server 可执行规则 JSON。
 //!
@@ -31,7 +31,7 @@ use crate::version::{LawRef, VersionError, VersionSelection, VersionSelectionMod
 /// 当前支持的快照包 schema 版本
 pub const BUNDLE_SCHEMA_VERSION: &str = "1.0";
 
-/// 快照包错误（36 号 §3：失败显式报错，不静默降级）
+/// 快照包错误（设计文档 §3：失败显式报错，不静默降级）
 #[derive(Debug, Error, PartialEq)]
 pub enum BundleError {
     #[error("不支持的快照包 schema 版本 `{found}`（当前支持 {BUNDLE_SCHEMA_VERSION}）")]
@@ -106,7 +106,7 @@ pub enum BundleError {
     Version(#[from] VersionError),
 }
 
-/// 沙箱验证结果（闸门一证据，决策点④）
+/// 沙箱验证结果（闸门一证据，既定设计决策）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TestVerdict {
@@ -124,7 +124,7 @@ impl fmt::Display for TestVerdict {
     }
 }
 
-/// 测试证据（36 号 §2：测试用例 + 沙箱验证结果随包携带，导入侧可复核）
+/// 测试证据（设计文档 §2：测试用例 + 沙箱验证结果随包携带，导入侧可复核）
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct BundleTests {
     /// 测试用例引用
@@ -149,7 +149,7 @@ impl BundleTests {
     }
 }
 
-/// 裁剪视图引用（36 号 §5：不新造版本链，指向原版本）
+/// 裁剪视图引用（设计文档 §5：不新造版本链，指向原版本）
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ViewRef {
     pub original_dataset_id: String,
@@ -157,16 +157,16 @@ pub struct ViewRef {
     pub view_of_version: String,
 }
 
-/// 快照包数据集元数据（36 号 §2 dataset 段）
+/// 快照包数据集元数据（设计文档 §2 dataset 段）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BundleDatasetMeta {
     pub dataset_id: String,
     pub name: String,
     pub tenant_id: String,
-    /// 真实发布者身份（白标不掩盖，决策点⑨）
+    /// 真实发布者身份（白标不掩盖，既定设计决策）
     pub instance_id: String,
     pub versioning: Versioning,
-    /// 内嵌版本选择配置（决策点③），导入侧合并为运行配置
+    /// 内嵌版本选择配置（既定设计决策），导入侧合并为运行配置
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version_selection: Option<VersionSelection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -210,7 +210,7 @@ impl fmt::Display for EntryKind {
 /// 治理侧（evorule-rule）与执行侧（evorule-server）各自持有一致的注册表。
 pub type DomainSchemaResolver<'a> = &'a dyn Fn(&str) -> Option<serde_json::Value>;
 
-/// 快照包条目（36 号 §2 entries 段，rule_body 原生 JSON）
+/// 快照包条目（设计文档 §2 entries 段，rule_body 原生 JSON）
 ///
 /// 字段名 `rule_body` 保留（已在 crates.io 发布 0.2.x，字段名变更破坏哈希字节兼容）：
 /// Knowledge 条目时该字段承载领域 payload，语义为"零转译条目体"，见 [`EntryKind`]。
@@ -235,12 +235,12 @@ pub struct BundleEntry {
     pub dependencies: Vec<SourceBinding>,
 }
 
-/// 导出审计（36 号 §2 audit 段）
+/// 导出审计（设计文档 §2 audit 段）
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BundleAudit {
     pub exported_at: String,
     pub exported_by: String,
-    /// 导出时的数据集版本（= 发布单位，决策点②）
+    /// 导出时的数据集版本（= 发布单位，既定设计决策）
     pub source_version: String,
     /// 全包哈希（blake3，防篡改）；前缀 `blake3:` 自描述算法
     #[serde(default)]
@@ -255,7 +255,7 @@ fn default_hash_algo() -> String {
     "blake3".to_string()
 }
 
-/// 快照包（单文件 JSON，36 号 §2）
+/// 快照包（单文件 JSON，设计文档 §2）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DatasetBundle {
     /// 快照包自身版本（演进用）
@@ -263,7 +263,7 @@ pub struct DatasetBundle {
     pub bundle_id: String,
     pub dataset: BundleDatasetMeta,
     pub entries: Vec<BundleEntry>,
-    /// 完整数据依赖声明（决策点⑤；裁剪视图收缩）
+    /// 完整数据依赖声明（既定设计决策；裁剪视图收缩）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_dependencies: Option<DataDependencies>,
     pub tests: BundleTests,
@@ -294,20 +294,20 @@ impl DatasetBundle {
     }
 }
 
-/// 导入校验结果（36 号 §3：校验通过后的运行配置；落 workspace 与热加载在执行侧）
+/// 导入校验结果（设计文档 §3：校验通过后的运行配置；落 workspace 与热加载在执行侧）
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportResult {
     pub bundle_id: String,
     pub dataset_id: String,
     pub source_version: String,
     pub selection_mode: VersionSelectionMode,
-    /// pinned 已解析出版本；auto 为运行时按事件日期解析（None，33 号）
+    /// pinned 已解析出版本；auto 为运行时按事件日期解析（None，历史批次）
     pub resolved_version: Option<String>,
     pub entry_count: usize,
     pub verdict: TestVerdict,
 }
 
-/// 导入校验（执行侧前置，36 号 §3 流程 1-4 + 闸门一证据）
+/// 导入校验（执行侧前置，设计文档 §3 流程 1-4 + 闸门一证据）
 pub struct BundleImporter;
 
 impl BundleImporter {
@@ -347,7 +347,7 @@ impl BundleImporter {
                 Some(VersionResolver::resolve_pinned(sel, chain)?)
             }
             _ => {
-                // auto：运行时按事件日期解析（33 号）；导入侧校验生效基准存在
+                // auto：运行时按事件日期解析（历史批次）；导入侧校验生效基准存在
                 if bundle
                     .dataset
                     .law_ref
@@ -383,7 +383,7 @@ impl BundleImporter {
     /// **按条目类型分流**（Q12 数据资产化，D1）：
     ///
     /// - `Rule` 条目：1) rule_body 结构（引擎原生 transform 形态，防 loader fail-soft 静默跳过
-    ///   非法规则）；2) 符号三方一致（31 号 §9-3）：dependencies 必须在数据集服务声明中，且在
+    ///   非法规则）；2) 符号三方一致（设计文档 §9-3）：dependencies 必须在数据集服务声明中，且在
     ///   rule_body 有 io_request 引用。动态 service 引用（`__exec__.instruction.params.*`）
     ///   运行时解析，body 字面量不参与匹配。**transform 白名单不开洞**（TCB dispatch 唯一权威）。
     /// - `Knowledge` 条目：不做 transform 校验（数据条目不进 TCB）；改为 D3 强校验——
@@ -531,7 +531,7 @@ impl BundleImporter {
     }
 }
 
-/// 裁剪（服务公司，36 号 §5）：裁剪 = 原版本视图，不新造版本链
+/// 裁剪（服务公司，设计文档 §5）：裁剪 = 原版本视图，不新造版本链
 pub struct BundleTrimmer;
 
 impl BundleTrimmer {
@@ -577,7 +577,7 @@ impl BundleTrimmer {
         Self::build_view(bundle, entries, by, at)
     }
 
-    /// 构造视图：依赖收缩 + 视图引用 + 审计重算（36 号 §5）
+    /// 构造视图：依赖收缩 + 视图引用 + 审计重算（设计文档 §5）
     fn build_view(
         bundle: &DatasetBundle,
         entries: Vec<BundleEntry>,
@@ -621,7 +621,7 @@ impl BundleTrimmer {
     }
 }
 
-/// 条目查询表达式（B3 段B 14 号，SSOT）—— 与 bundle subset 裁剪语法同族的纯函数过滤核。
+/// 条目查询表达式（B3 段B 历史批次，SSOT）—— 与 bundle subset 裁剪语法同族的纯函数过滤核。
 ///
 /// 语法：多段以 `;` 分隔，**交集语义**；段格式 `kind:value`：
 /// - `tag:core`：标签命中（任一标签相等即命中）
@@ -789,7 +789,7 @@ mod tests {
         None
     }
 
-    // B3（段B 14 号）：EntryFilter 条目查询表达式纯函数
+    // B3（段B 历史批次）：EntryFilter 条目查询表达式纯函数
 
     fn filter_ids(entries: &[BundleEntry], spec: &str) -> Vec<String> {
         EntryFilter::apply(entries, spec)
