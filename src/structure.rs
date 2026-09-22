@@ -9,7 +9,7 @@
 //! 边界：本门禁是**轻量**实现，非逐字节 jsonschema（完整 schema 校验由执行侧
 //! `evorule-rule-schema` 承担）。残余窗口："治理侧放行、执行侧完整 schema 拒收"。
 //!
-//! 许可：Apache-2.0（自 v0.2.1 起；历史版本曾以 AGPL-3.0-or-later 发布）
+//! 许可：AGPL-3.0-or-later（自 v0.3.1 起；历史版本曾以 Apache-2.0（v0.2.1–v0.3.0）与 AGPL-3.0-or-later（≤ v0.2.0）发布，crates.io 已发布版本许可不可改，消费方钉版时注意许可口径）
 
 use serde_json::Value;
 

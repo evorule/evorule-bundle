@@ -1,4 +1,4 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <!-- Copyright (C) 2026 EvoRule Project -->
 
 # 更新日志
@@ -7,10 +7,13 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-22
+
 ### 变更
 
+- **许可证回归 AGPL-3.0-or-later**（依生态许可统一裁定：治理一致性优先）。历史轨迹：≤ v0.2.0 AGPL → v0.2.1–v0.3.0 Apache-2.0 → v0.3.1 起回归 AGPL；crates.io 已发布版本许可不可改，消费方钉版时注意许可口径
 - **元指令白名单同步收窄（2026-09-15）**：`structure.rs::META_INSTRUCTION_TYPES` 由 6 种（残留已退役的 collect/merge、缺 enforce）同步为 TCB dispatch 权威口径 **5 种（branch/set/push/io_request/enforce）**。collect/merge 条目自此在结构门禁被拒（与 TCB v0.6.0 执行侧一致，消除"治理/打包放行、执行拒收"窗口）；enforce 形态放行（tier=meta 进入管控属 server 装载门禁职责，非本层职责）。新增仓内 SSOT 快照测试 + 退役拒绝测试；跨仓对齐由 evorule-system-rules `tools/check_whitelist_sync.py` 第四向校验（同日接入）
-- 注意：crates.io 已发布的 0.3.0 仍为旧白名单，消费方（server / rule 经 crates.io 解析）在本仓下次发版后随 Cargo.lock 更新生效
+- 注意：crates.io 已发布的 0.3.0 仍为旧白名单与 Apache 许可，消费方（server / rule 经 crates.io 解析）在本仓下次发版后随 Cargo.lock 更新生效
 
 ## [0.2.1] - 2026-08-29
 

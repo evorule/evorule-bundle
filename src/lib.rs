@@ -16,7 +16,7 @@
 //! 条目类型分流（Q12/D1）：Rule 条目走 transform 白名单门禁（TCB dispatch 唯一权威，不开洞）；
 //! Knowledge 条目走 D3 领域 schema 强校验（`DomainSchemaResolver` 注入，resolver 未命中即拒绝）。
 //!
-//! 许可：Apache-2.0（自 v0.2.1 起；历史版本曾以 AGPL-3.0-or-later 发布）
+//! 许可：AGPL-3.0-or-later（自 v0.3.1 起；历史版本曾以 Apache-2.0（v0.2.1–v0.3.0）与 AGPL-3.0-or-later（≤ v0.2.0）发布，crates.io 已发布版本许可不可改，消费方钉版时注意许可口径）
 
 pub mod bundle;
 pub mod dependency;

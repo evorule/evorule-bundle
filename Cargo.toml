@@ -1,6 +1,6 @@
 [package]
 name = "evorule-bundle"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 description = "EvoRule snapshot bundle (DatasetBundle) self-contained validation — shared by governance (evorule-rule) and execution (evorule-server)"
 license = "AGPL-3.0-or-later"

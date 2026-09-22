@@ -5,7 +5,7 @@
 
   This file is part of EvoRule. Code is licensed under AGPL-3.0-or-later;
   see the 许可证 section below for dual-license and historical notes
-  (v0.2.1 briefly used Apache-2.0, reverted to AGPL-3.0-or-later).
+  (v0.2.1–v0.3.0 briefly used Apache-2.0, reverted to AGPL-3.0-or-later as of v0.3.1).
 -->
 
 # evorule-bundle
@@ -102,7 +102,7 @@ evorule-bundle = { path = "../evorule-bundle" }
 
 **AGPL-3.0-or-later**（依据 DEC-2026-001 D-001-10 统一：治理一致性优先）。本仓采用 EvoRule 双许可架构：闭源使用见 [DUAL_LICENSE.md](DUAL_LICENSE.md) / [FREE_COMMERCIAL_LICENSE.md](FREE_COMMERCIAL_LICENSE.md)（合格实体免费豁免）/ [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)（付费）。`core_eval.json` 宪法为 **CC0-1.0**。商业许可咨询：evorulelab@gmail.com。
 
-> 历史说明：v0.2.0 曾以 AGPL 发布，v0.2.1 短暂以 Apache-2.0 发布；已发布的旧版本仍按原许可，本变更仅对新版本生效，已下载副本不受影响。
+> 历史说明：v0.2.0 曾以 AGPL 发布，v0.2.1–v0.3.0 短暂以 Apache-2.0 发布，自 v0.3.1 起依前述统一裁定**回归 AGPL-3.0-or-later**。已发布的旧版本仍按原许可（crates.io 已发布版本许可不可改），本变更仅对新版本生效，已下载副本不受影响；消费方钉版时注意许可口径。
 
 本许可授予代码使用权，不授予 EvoRule 名称与商标的使用权。
 
