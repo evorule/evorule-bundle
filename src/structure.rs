@@ -541,7 +541,8 @@ mod tests {
     fn branch_缺domain_or_on_true_拒绝() {
         let v = json!([{"type": "branch", "params": {"on_true": []}}]);
         assert!(!ok(v), "branch 缺 domain 应拒绝");
-        let v2 = json!([{"type": "branch", "params": {"domain": {"type": "exists", "path": "a.b"}}}]);
+        let v2 =
+            json!([{"type": "branch", "params": {"domain": {"type": "exists", "path": "a.b"}}}]);
         assert!(!ok(v2), "branch 缺 on_true 应拒绝");
     }
 
@@ -573,6 +574,9 @@ mod tests {
             "domain": {"type": "exists", "path": "a.b"},
             "on_true": [{"type": "set", "params": {"value": 1}}]
         }}]);
-        assert!(!ok(v), "branch.on_true 子步骤缺 attr/operation 应被递归拒绝");
+        assert!(
+            !ok(v),
+            "branch.on_true 子步骤缺 attr/operation 应被递归拒绝"
+        );
     }
 }
