@@ -762,7 +762,7 @@ mod tests {
                 "rule_id": entry_id,
                 "version": "0.1.0",
                 "transform": [
-                    { "type": "io_request", "params": { "service_name": "payroll_svc" } }
+                    { "type": "io_request", "params": { "io_type": "call_service", "service_name": "payroll_svc" } }
                 ]
             }),
             schema_ref: None,
@@ -993,7 +993,7 @@ mod tests {
         // 结构合法（set 指令）但 rule_body 无 payroll_svc 的 io_request 引用
         b.entries[0].rule_body = serde_json::json!({
             "rule_id": "entry-tax-001",
-            "transform": [{"type": "set", "params": {"x": 1}}]
+            "transform": [{"type": "set", "params": {"attr": "x", "operation": "set", "value": 1}}]
         });
         resign(&mut b);
         match BundleImporter::validate(&b, &no_resolver) {
@@ -1119,7 +1119,7 @@ mod tests {
         let raw = serde_json::json!({
             "entry_id": "legacy-1",
             "rule_body": {"rule_id": "legacy-1", "transform": [
-                {"type": "io_request", "params": {"service_name": "payroll_svc"}}
+                {"type": "io_request", "params": {"io_type": "call_service", "service_name": "payroll_svc"}}
             ]},
             "provenance": {"source": "legacy"},
             "domain": "tax",
