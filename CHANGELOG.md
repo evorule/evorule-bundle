@@ -5,7 +5,16 @@
 
 本文件记录 evorule-bundle 的显著变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.4.0] - 2026-09-27
+
+### 新增
+
+- **结构级校验门禁扩展**：条目级键白名单、set 需 attr+operation、push instructions、branch 递归校验、io_request 需 io_type；fail-closed 强化——装载期拒绝违规 bundle 并明示违规位置
+
+### 修正
+
+- 测试 fixture 对齐 structure 门禁（io_type 必填 + set 需 attr/operation）
+- structure.rs 测试断言换行格式化（cargo fmt）
 
 ## [0.3.1] - 2026-09-22
 
