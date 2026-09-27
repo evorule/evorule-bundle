@@ -5,9 +5,15 @@
 //! - 非法元指令类型（不在元指令白名单，5 种）→ 防止指令层类型混入元指令层；
 //! - 单数 `__io_result__`（引擎写复数 `__io_results__`）→ 防止运行时 PathResolutionFailed；
 //! - 路径语法错误（空段 / 非法索引 / 非法字符）。
+//! - **结构级**：params 必须存在且为对象、条目级键白名单 {type,params}、各类型关键
+//!   子字段（set.attr/operation、push.instructions、branch.domain/on_true、
+//!   io_request.io_type）存在性+类型校验（2026-09-26 补缺：堵 PowerShell 深度截断
+//!   导致的 params 类型污染等"治理放行、执行拒收"窗口；对齐 `_shared` transform_rule
+//!   $defs 的结构级约束，语义深校验仍归执行侧）。
 //!
 //! 边界：本门禁是**轻量**实现，非逐字节 jsonschema（完整 schema 校验由执行侧
-//! `evorule-rule-schema` 承担）。残余窗口："治理侧放行、执行侧完整 schema 拒收"。
+//! `evorule-rule-schema` 承担）。残余窗口已收窄为纯语义级（如 set.value 缺省、
+//! domain 求值类型），结构级不再有放行窗口。
 //!
 //! 许可：AGPL-3.0-or-later（自 v0.3.1 起；历史版本曾以 Apache-2.0（v0.2.1–v0.3.0）与 AGPL-3.0-or-later（≤ v0.2.0）发布，crates.io 已发布版本许可不可改，消费方钉版时注意许可口径）
 
@@ -38,14 +44,7 @@ pub fn validate_rule_structure(input: &Value) -> Result<(), Vec<String>> {
 
     let mut errors = Vec::new();
     for (i, step) in transform.iter().enumerate() {
-        match step.get("type").and_then(Value::as_str) {
-            Some(ty) if META_INSTRUCTION_TYPES.contains(&ty) => {}
-            Some(ty) => errors.push(format!(
-                "transform[{i}].type='{ty}' 不是元指令（白名单: {}）",
-                META_INSTRUCTION_TYPES.join("/")
-            )),
-            None => errors.push(format!("transform[{i}] 缺 type")),
-        }
+        validate_transform_step(step, &format!("transform[{i}]"), &mut errors);
         scan_strings(step, i, &mut errors);
     }
 
@@ -53,6 +52,177 @@ pub fn validate_rule_structure(input: &Value) -> Result<(), Vec<String>> {
         Ok(())
     } else {
         Err(errors)
+    }
+}
+
+/// 单步元指令结构校验（轻量，对齐 `_shared/v1.0.json` transform_rule $defs 的结构级约束；
+/// 完整逐字节 jsonschema 仍由执行侧 evorule-rule-schema 承担——本函数只堵"结构级"残余窗口：
+/// params 类型污染 / 条目级未知键 / 各类型关键子字段缺失或类型错）。
+/// 字符串级检查（单数 __io_result__ / 路径语法）由主循环的 scan_strings 递归覆盖，此处不重复。
+///
+/// `path` 为错误定位描述（如 "transform[0].params.on_true[1]"）；`errors` 收集错误。
+fn validate_transform_step(step: &Value, path: &str, errors: &mut Vec<String>) {
+    let Some(map) = step.as_object() else {
+        errors.push(format!("{path} 必须是对象"));
+        return;
+    };
+    // 条目级键白名单（对齐 additionalProperties:false）：防 LLM 转写把匹配条件写成
+    // 条目级 condition 等未知键导致引擎静默忽略（意图静默丢失防御，_shared 注释同源）
+    for key in map.keys() {
+        if key != "type" && key != "params" {
+            errors.push(format!(
+                "{path} 未知条目级键 '{key}'（仅允许 type/params；条件语义必须经 params 内的 domain/enforce 原语表达）"
+            ));
+        }
+    }
+    // params 必须存在且为对象（required: [type, params]；堵 ConvertTo-Json 深度截断等
+    // 将 params 整体污染为字符串/数组的入库窗口）
+    let params = match step.get("params") {
+        Some(Value::Object(p)) => p,
+        Some(_) => {
+            errors.push(format!("{path}.params 必须是对象（当前为非对象值）"));
+            return;
+        }
+        None => {
+            errors.push(format!("{path} 缺 params（元指令条目必填 type+params）"));
+            return;
+        }
+    };
+    let ty = match step.get("type").and_then(Value::as_str) {
+        Some(t) if META_INSTRUCTION_TYPES.contains(&t) => t,
+        Some(t) => {
+            errors.push(format!(
+                "{path}.type='{t}' 不是元指令（白名单: {}）",
+                META_INSTRUCTION_TYPES.join("/")
+            ));
+            return;
+        }
+        None => {
+            errors.push(format!("{path} 缺 type"));
+            return;
+        }
+    };
+    // 按类型做关键子结构存在性+类型校验（轻量；语义深校验归执行侧）
+    match ty {
+        "set" => {
+            check_params_field(
+                params,
+                path,
+                "attr",
+                errors,
+                Value::is_string,
+                "attr 必须是字符串路径",
+            );
+            check_params_field(
+                params,
+                path,
+                "operation",
+                errors,
+                Value::is_string,
+                "operation 必须是字符串",
+            );
+        }
+        "push" => match params.get("instructions") {
+            Some(Value::Array(arr)) => {
+                for (j, ins) in arr.iter().enumerate() {
+                    validate_instruction_ref(
+                        ins,
+                        &format!("{path}.params.instructions[{j}]"),
+                        errors,
+                    );
+                }
+            }
+            Some(Value::String(s)) if s.starts_with("__") => {}
+            Some(_) => errors.push(format!(
+                "{path}.params.instructions 必须是指令数组或 __ 前缀路径字符串"
+            )),
+            None => errors.push(format!("{path}.params.instructions 缺失（push 必填）")),
+        },
+        "branch" => {
+            if params.get("domain").is_none() {
+                errors.push(format!("{path}.params.domain 缺失（branch 必填）"));
+            }
+            match params.get("on_true") {
+                Some(Value::Array(arr)) => {
+                    for (j, sub) in arr.iter().enumerate() {
+                        validate_transform_step(
+                            sub,
+                            &format!("{path}.params.on_true[{j}]"),
+                            errors,
+                        );
+                    }
+                }
+                Some(_) => errors.push(format!("{path}.params.on_true 必须是数组")),
+                None => errors.push(format!("{path}.params.on_true 缺失（branch 必填）")),
+            }
+            if let Some(v) = params.get("on_false") {
+                match v {
+                    Value::Array(arr) => {
+                        for (j, sub) in arr.iter().enumerate() {
+                            validate_transform_step(
+                                sub,
+                                &format!("{path}.params.on_false[{j}]"),
+                                errors,
+                            );
+                        }
+                    }
+                    _ => errors.push(format!("{path}.params.on_false 必须是数组")),
+                }
+            }
+        }
+        "io_request" => {
+            check_params_field(
+                params,
+                path,
+                "io_type",
+                errors,
+                Value::is_string,
+                "io_type 必须是字符串",
+            );
+        }
+        // enforce：形态校验（tier=meta 进入管控由 server 装载门禁承担，回归验证）
+        _ => {}
+    }
+}
+
+/// 校验 params 内某字段的存在性+类型谓词。
+fn check_params_field(
+    params: &serde_json::Map<String, Value>,
+    path: &str,
+    field: &str,
+    errors: &mut Vec<String>,
+    pred: fn(&Value) -> bool,
+    msg: &str,
+) {
+    match params.get(field) {
+        Some(v) if pred(v) => {}
+        Some(_) => errors.push(format!("{path}.params.{field} {msg}（当前为非预期类型）")),
+        None => errors.push(format!("{path}.params.{field} 缺失（{field} 必填）")),
+    }
+}
+
+/// 指令层引用校验（push.instructions 元素）：object 须含 string type 且 params 若存在须为
+/// object；string 须 __ 前缀路径。指令层 type 任意（core_eval 匹配的 instruction_type，
+/// 含 increment/decrement/sequence 等），不做元指令白名单。
+fn validate_instruction_ref(ins: &Value, path: &str, errors: &mut Vec<String>) {
+    match ins {
+        Value::Object(map) => {
+            match map.get("type").and_then(Value::as_str) {
+                Some(_) => {}
+                None => errors.push(format!("{path} 指令缺 type")),
+            }
+            if let Some(p) = map.get("params") {
+                if !p.is_object() {
+                    errors.push(format!("{path}.params 必须是对象"));
+                }
+            }
+        }
+        Value::String(s) => {
+            if !s.starts_with("__") {
+                errors.push(format!("{path} 字符串指令引用必须 __ 前缀（当前: '{s}'）"));
+            }
+        }
+        _ => errors.push(format!("{path} 指令项必须是对象或 __ 前缀字符串")),
     }
 }
 
@@ -326,5 +496,83 @@ mod tests {
             let v = json!({"transform": [{"type": "set", "params": {"attr": good, "operation": "set", "value": 1}}]});
             assert!(ok(v), "应通过路径: {good}");
         }
+    }
+
+    // ===== 2026-09-26 补缺：结构级门禁（params 类型污染 / 条目级未知键 / 子字段缺失）=====
+
+    #[test]
+    fn params_非对象_拒绝() {
+        // PowerShell ConvertTo-Json 深度截断污染形态（P0 实测 H1 根因）：params 整体变成字符串
+        let v = json!([{"type": "push", "params": "@{instructions=System.Object[]}"}]);
+        assert!(!ok(v), "params 字符串污染应拒绝");
+        let v2 = json!([{"type": "set", "params": [1, 2, 3]}]);
+        assert!(!ok(v2), "params 数组应拒绝");
+    }
+
+    #[test]
+    fn 缺params_拒绝() {
+        let v = json!([{"type": "set"}]);
+        assert!(!ok(v));
+    }
+
+    #[test]
+    fn 条目级未知键_拒绝() {
+        // LLM 转写把匹配条件写成条目级 condition → 引擎静默忽略（意图静默丢失防御）
+        let v = json!([{"type": "set", "params": {"attr": "a", "operation": "set", "value": 1}, "condition": {"type": "eq"}}]);
+        assert!(!ok(v), "条目级 condition 应拒绝");
+    }
+
+    #[test]
+    fn set_缺attr_operation_拒绝() {
+        let v = json!([{"type": "set", "params": {"value": 1}}]);
+        assert!(!ok(v), "set 缺 attr/operation 应拒绝");
+    }
+
+    #[test]
+    fn push_instructions_污染_拒绝() {
+        // instructions 被字符串化（非 __ 前缀字符串）
+        let v = json!([{"type": "push", "params": {"instructions": "@{System.Object[]}"}}]);
+        assert!(!ok(v), "instructions 非 __ 前缀字符串应拒绝");
+        let v2 = json!([{"type": "push", "params": {}}]);
+        assert!(!ok(v2), "push 缺 instructions 应拒绝");
+    }
+
+    #[test]
+    fn branch_缺domain_or_on_true_拒绝() {
+        let v = json!([{"type": "branch", "params": {"on_true": []}}]);
+        assert!(!ok(v), "branch 缺 domain 应拒绝");
+        let v2 = json!([{"type": "branch", "params": {"domain": {"type": "exists", "path": "a.b"}}}]);
+        assert!(!ok(v2), "branch 缺 on_true 应拒绝");
+    }
+
+    #[test]
+    fn io_request_缺io_type_拒绝() {
+        let v = json!([{"type": "io_request", "params": {"service_name": "x"}}]);
+        assert!(!ok(v), "io_request 缺 io_type 应拒绝");
+    }
+
+    #[test]
+    fn push_指令层_宽松通过() {
+        // 指令层 type 任意（increment/sequence 等），不做元指令白名单；params 可选 object
+        let v = json!([{"type": "push", "params": {
+            "instructions": [
+                {"type": "increment", "params": {"attr": "count", "delta": 1}},
+                {"type": "sequence", "params": {"instructions": [{"type": "set", "params": {"attr": "x", "operation": "set", "value": 1}}]}}
+            ]
+        }}]);
+        assert!(ok(v));
+        // __ 前缀路径引用
+        let v2 = json!([{"type": "push", "params": {"instructions": "__exec__.instruction.params.then"}}]);
+        assert!(ok(v2));
+    }
+
+    #[test]
+    fn branch_递归子结构校验() {
+        // on_true 递归 transform_rule：子步骤缺 params 应被递归拦截
+        let v = json!([{"type": "branch", "params": {
+            "domain": {"type": "exists", "path": "a.b"},
+            "on_true": [{"type": "set", "params": {"value": 1}}]
+        }}]);
+        assert!(!ok(v), "branch.on_true 子步骤缺 attr/operation 应被递归拒绝");
     }
 }
