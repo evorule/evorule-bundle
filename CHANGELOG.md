@@ -10,6 +10,7 @@
 ### 新增
 
 - **结构级校验门禁扩展**：条目级键白名单、set 需 attr+operation、push instructions、branch 递归校验、io_request 需 io_type；fail-closed 强化——装载期拒绝违规 bundle 并明示违规位置
+- **知识资产化字段（2026-10-04 补入本版本后发布）**：`BundleEntry` 增 `knowledge_kind`（知识五分法谱系）/`trust_level`（来源信任级）/`license_ref`（许可证域引用）/`execution_contract`（运行契约：pathway/criterion_ref/consumer_allowlist/budget_class）——全字段 `Option` + `skip_serializing_if`，旧格式 bundle 反序列化与序列化字节不变（向后兼容回归测试钉死）；新增 `ExecutionContract` 公开类型
 
 ### 修正
 

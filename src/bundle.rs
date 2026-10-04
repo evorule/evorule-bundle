@@ -210,6 +210,46 @@ impl fmt::Display for EntryKind {
 /// 治理侧（evorule-rule）与执行侧（evorule-server）各自持有一致的注册表。
 pub type DomainSchemaResolver<'a> = &'a dyn Fn(&str) -> Option<serde_json::Value>;
 
+/// 知识运行契约（知识资产化批次 A；总纲 §3.2 运行通路声明）
+///
+/// 知识条目如何被「运行」的契约面：机器验壳（字段完整性）不验核（payload 语义）。
+/// A 批仅做字段流通（bundle→治理→执行投影），行为约束（判据强制行权闸）在治理侧批次 B 落地。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionContract {
+    /// 运行通路：`direct`（机器直行）| `injection`（检索注入）| `criterion`（判据评估）
+    pub pathway: String,
+    /// 判据引用（heuristic/model 类知识行权必填——治理侧校验）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub criterion_ref: Option<String>,
+    /// 消费面白名单（缺省 `["*"]` 全放行）
+    #[serde(default = "default_consumer_allowlist")]
+    pub consumer_allowlist: Vec<String>,
+    /// 消费预算类（接执行侧消费预算分档）
+    #[serde(default = "default_budget_class")]
+    pub budget_class: String,
+}
+
+/// 手写 Default（不用 derive）：Rust 侧构造缺省与 serde 反序列化缺省必须同语义
+/// （derive(Default) 会给 consumer_allowlist 空 Vec，绕过 default_consumer_allowlist）
+impl Default for ExecutionContract {
+    fn default() -> Self {
+        Self {
+            pathway: "injection".into(),
+            criterion_ref: None,
+            consumer_allowlist: default_consumer_allowlist(),
+            budget_class: default_budget_class(),
+        }
+    }
+}
+
+fn default_consumer_allowlist() -> Vec<String> {
+    vec!["*".to_string()]
+}
+
+fn default_budget_class() -> String {
+    "default".to_string()
+}
+
 /// 快照包条目（设计文档 §2 entries 段，rule_body 原生 JSON）
 ///
 /// 字段名 `rule_body` 保留（已在 crates.io 发布 0.2.x，字段名变更破坏哈希字节兼容）：
@@ -233,6 +273,19 @@ pub struct BundleEntry {
     /// 条目级依赖（裁剪后收缩；Knowledge 条目 MVP 不支持）
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dependencies: Vec<SourceBinding>,
+    /// 知识资产化：知识条目 kind 谱系（fact|procedure|heuristic|narrative|model|custom:{name}）；
+    /// Rule 条目恒 None。缺省 None = 旧格式兼容（无 kind 走旧通路）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub knowledge_kind: Option<String>,
+    /// 来源信任级（`human` | `llm` | `external:{source}`）；缺省 None = 未声明（治理侧按缺省规则处置）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust_level: Option<String>,
+    /// 许可证域引用（外部导入条目必填——治理侧校验）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license_ref: Option<String>,
+    /// 知识运行契约（缺省 None = 契约未声明，治理侧只可 Draft 不行权）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_contract: Option<ExecutionContract>,
 }
 
 /// 导出审计（设计文档 §2 audit 段）
@@ -766,6 +819,10 @@ mod tests {
                 ]
             }),
             schema_ref: None,
+            knowledge_kind: None,
+            trust_level: None,
+            license_ref: None,
+            execution_contract: None,
             provenance: Provenance {
                 source: "《企业所得税法》".into(),
                 clause: None,
@@ -875,6 +932,58 @@ mod tests {
         (uri == "https://rpsm.evorule.org/schemas/scenario/v1.0.json").then_some(scenario_schema())
     }
 
+    /// 知识资产化批次 A：旧格式 bundle（无知识四字段）反序列化兼容 + None 字段序列化不输出
+    /// （字节兼容承诺：02 号冲突面核查报告 §二；哈希域=evorule-hash 治理资产域 canonical 序列化）
+    #[test]
+    fn knowledge_fields_backward_compat() {
+        // 旧格式 JSON（无 knowledge_kind/trust_level/license_ref/execution_contract）→ 全 None
+        let legacy = r#"{
+            "entry_id": "k1",
+            "entry_kind": "knowledge",
+            "rule_body": {"v": 1},
+            "provenance": {"source": "s"},
+            "domain": "d"
+        }"#;
+        let e: BundleEntry = serde_json::from_str(legacy).expect("旧格式 bundle 必须继续可解析");
+        assert!(e.knowledge_kind.is_none());
+        assert!(e.trust_level.is_none());
+        assert!(e.license_ref.is_none());
+        assert!(e.execution_contract.is_none());
+
+        // None 字段不输出（skip_serializing_if）→ 与旧格式字节兼容（哈希不变）
+        let out = serde_json::to_string(&e).unwrap();
+        assert!(!out.contains("knowledge_kind"));
+        assert!(!out.contains("trust_level"));
+        assert!(!out.contains("license_ref"));
+        assert!(!out.contains("execution_contract"));
+
+        // 有值时序列化/反序列化往返保真
+        let e2 = BundleEntry {
+            knowledge_kind: Some("heuristic".into()),
+            trust_level: Some("llm".into()),
+            license_ref: Some("AGPL-3.0-or-later".into()),
+            execution_contract: Some(ExecutionContract {
+                pathway: "criterion".into(),
+                criterion_ref: Some("criterion://tax/heuristic-01".into()),
+                ..Default::default()
+            }),
+            ..e
+        };
+        let out2 = serde_json::to_string(&e2).unwrap();
+        let back: BundleEntry = serde_json::from_str(&out2).unwrap();
+        assert_eq!(back.knowledge_kind.as_deref(), Some("heuristic"));
+        assert_eq!(back.trust_level.as_deref(), Some("llm"));
+        assert_eq!(back.license_ref.as_deref(), Some("AGPL-3.0-or-later"));
+        let ec = back.execution_contract.as_ref().unwrap();
+        assert_eq!(ec.pathway, "criterion");
+        assert_eq!(
+            ec.criterion_ref.as_deref(),
+            Some("criterion://tax/heuristic-01")
+        );
+        assert_eq!(ec.consumer_allowlist, vec!["*".to_string()]);
+        assert_eq!(ec.budget_class, "default");
+    }
+
     /// knowledge 数据条目（rpsm 场景形态）
     fn knowledge_entry(entry_id: &str) -> BundleEntry {
         BundleEntry {
@@ -887,6 +996,10 @@ mod tests {
                 "bodies": [{"id": "particle-1"}]
             }),
             schema_ref: Some("https://rpsm.evorule.org/schemas/scenario/v1.0.json".into()),
+            knowledge_kind: None,
+            trust_level: None,
+            license_ref: None,
+            execution_contract: None,
             provenance: Provenance {
                 source: "rpsm 内置场景".into(),
                 clause: None,
@@ -1012,6 +1125,10 @@ mod tests {
             entry_kind: EntryKind::Rule,
             rule_body: serde_json::json!({"rule_id": "e1", "transform": []}),
             schema_ref: None,
+            knowledge_kind: None,
+            trust_level: None,
+            license_ref: None,
+            execution_contract: None,
             provenance: Provenance {
                 source: "test".into(),
                 clause: None,
