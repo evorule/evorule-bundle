@@ -35,7 +35,7 @@ pub const BUNDLE_MANIFEST_FILE: &str = "bundle_manifest.json";
 pub use bundle::{
     BundleAudit, BundleDatasetMeta, BundleEntry, BundleError, BundleImporter, BundleTests,
     BundleTrimmer, DatasetBundle, DomainSchemaResolver, EntryFilter, EntryKind, ExecutionContract,
-    ImportResult, TestVerdict, ViewRef, BUNDLE_SCHEMA_VERSION,
+    ImportResult, RecipeSnapshot, TestVerdict, ViewRef, BUNDLE_SCHEMA_VERSION,
 };
 pub use dependency::{
     DataDependencies, InputDecl, IoContract, ServiceDecl, ServiceTemplate, SourceBinding,
@@ -47,3 +47,18 @@ pub use symbols::{has_dynamic_service_ref, io_services_from_rule_body};
 pub use version::{
     BumpKind, LawRef, Version, VersionError, VersionSelection, VersionSelectionMode, Versioning,
 };
+
+#[cfg(test)]
+mod root_reexport_tests {
+    /// 根部导出守卫（0.5.1）：bundle 模块新增公开类型必须同步根部 re-export，
+    /// 否则消费方 `evorule_bundle::X` 根路径导入编译失败（0.5.0 漏 RecipeSnapshot 教训；
+    /// 本仓测试走模块路径发现不了，须以根路径引用做编译期守卫）。
+    #[test]
+    fn root_path_reexports_recipe_snapshot() {
+        let _guard = crate::RecipeSnapshot {
+            recipe_version: String::new(),
+            recipe: serde_json::Value::Null,
+            snapshot_at: String::new(),
+        };
+    }
+}
