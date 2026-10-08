@@ -308,7 +308,7 @@ fn default_hash_algo() -> String {
     "blake3".to_string()
 }
 
-/// 策略快照（35 号批 1：bundle 内嵌 Recipe 快照，修复赛时复现性窟窿）
+/// 策略快照（bundle 内嵌 Recipe 快照：随包固化打包时刻策略，修复复现性缺口）
 ///
 /// 语义：打包时刻调用方策略资产的固化副本，随全包哈希链防篡改。契约层将其
 /// 视为 **opaque 载荷**——`recipe` 为调用方策略的完整 JSON（本 crate 不解析、
@@ -340,7 +340,7 @@ pub struct DatasetBundle {
     /// 完整数据依赖声明（既定设计决策；裁剪视图收缩）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_dependencies: Option<DataDependencies>,
-    /// 策略快照（35 号批 1；可选——缺省不序列化，字节兼容既有包；
+    /// 策略快照（可选——缺省不序列化，字节兼容既有包；
     /// 裁剪视图 `build_view` 整体克隆自动随行并重算哈希）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recipe_snapshot: Option<RecipeSnapshot>,
@@ -959,7 +959,7 @@ mod tests {
     }
 
     /// 知识资产化批次 A：旧格式 bundle（无知识四字段）反序列化兼容 + None 字段序列化不输出
-    /// （字节兼容承诺：02 号冲突面核查报告 §二；哈希域=evorule-hash 治理资产域 canonical 序列化）
+    /// （字节兼容承诺：冲突面核查报告 §二；哈希域=evorule-hash 治理资产域 canonical 序列化）
     #[test]
     fn knowledge_fields_backward_compat() {
         // 旧格式 JSON（无 knowledge_kind/trust_level/license_ref/execution_contract）→ 全 None
@@ -1445,7 +1445,7 @@ mod tests {
     }
 
     // =========================================================================
-    // 策略快照（recipe_snapshot，35 号批 1）
+    // 策略快照（recipe_snapshot：随包固化 + 哈希覆盖 + 裁剪随行）
     // =========================================================================
 
     fn sample_recipe_snapshot() -> RecipeSnapshot {
