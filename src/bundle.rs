@@ -308,6 +308,27 @@ fn default_hash_algo() -> String {
     "blake3".to_string()
 }
 
+/// 策略快照（35 号批 1：bundle 内嵌 Recipe 快照，修复赛时复现性窟窿）
+///
+/// 语义：打包时刻调用方策略资产的固化副本，随全包哈希链防篡改。契约层将其
+/// 视为 **opaque 载荷**——`recipe` 为调用方策略的完整 JSON（本 crate 不解析、
+/// 不校验其内部结构），结构有效性由消费侧（如 agent 恢复路径）负责；
+/// 防篡改由 `DatasetBundle::verify_content_hash` 全包覆盖（快照参与规范化
+/// 序列化，任何改动都会使哈希失配）。
+///
+/// 演进纪律：可选字段（`skip_serializing_if`）在 schema 1.0 内演进，
+/// 与 `data_dependencies` 同先例——bump schema 版本会使既有全部包导入失败
+/// （`BundleImporter::validate` 硬等校验），属破坏性变更，不得用于可选增量。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecipeSnapshot {
+    /// 策略版本标识（随调用方策略落链口径，如 "memory-v1.0"）
+    pub recipe_version: String,
+    /// 策略完整 JSON（opaque；由调用方序列化其策略资产得到）
+    pub recipe: serde_json::Value,
+    /// 快照固化时刻（导出事实，ISO 8601）
+    pub snapshot_at: String,
+}
+
 /// 快照包（单文件 JSON，设计文档 §2）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DatasetBundle {
@@ -319,6 +340,10 @@ pub struct DatasetBundle {
     /// 完整数据依赖声明（既定设计决策；裁剪视图收缩）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_dependencies: Option<DataDependencies>,
+    /// 策略快照（35 号批 1；可选——缺省不序列化，字节兼容既有包；
+    /// 裁剪视图 `build_view` 整体克隆自动随行并重算哈希）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recipe_snapshot: Option<RecipeSnapshot>,
     pub tests: BundleTests,
     pub audit: BundleAudit,
 }
@@ -780,6 +805,7 @@ mod tests {
                 event_schemas: vec![],
             },
             entries,
+            recipe_snapshot: None,
             data_dependencies: Some(DataDependencies {
                 inputs: vec![InputDecl {
                     name: "payroll_event".into(),
@@ -1416,5 +1442,108 @@ mod tests {
         assert!(matches!(err, BundleError::EmptyView));
         let err = BundleTrimmer::trim_by_filter(&bundle, Some("nope"), &[], "x", "t").unwrap_err();
         assert!(matches!(err, BundleError::EmptyView));
+    }
+
+    // =========================================================================
+    // 策略快照（recipe_snapshot，35 号批 1）
+    // =========================================================================
+
+    fn sample_recipe_snapshot() -> RecipeSnapshot {
+        RecipeSnapshot {
+            recipe_version: "memory-v1.0".into(),
+            recipe: serde_json::json!({
+                "recipe_version": "memory-v1.0",
+                "retrieval": {"candidates": 40, "window": 7},
+                "lifecycle": {"promote_hits": 5}
+            }),
+            snapshot_at: "2026-10-08T00:00:00Z".into(),
+        }
+    }
+
+    #[test]
+    fn test_recipe_snapshot_none_not_serialized() {
+        // 缺省不序列化 → 字节兼容既有包（旧消费方零感知）
+        let b = exported_bundle();
+        assert!(b.recipe_snapshot.is_none());
+        let json = serde_json::to_string(&b).unwrap();
+        assert!(!json.contains("recipe_snapshot"), "None 时不得写出字段");
+        // 反序列化回来仍是 None（roundtrip 稳定）
+        let back: DatasetBundle = serde_json::from_str(&json).unwrap();
+        assert!(back.recipe_snapshot.is_none());
+    }
+
+    #[test]
+    fn test_recipe_snapshot_roundtrip_and_hash_coverage() {
+        // 附快照 → 序列化/反序列化保真 + 全包哈希覆盖（防篡改）
+        let mut b = exported_bundle();
+        b.recipe_snapshot = Some(sample_recipe_snapshot());
+        resign(&mut b);
+        b.verify_content_hash().unwrap();
+
+        let json = serde_json::to_string(&b).unwrap();
+        assert!(json.contains("recipe_snapshot"));
+        let back: DatasetBundle = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back.recipe_snapshot.as_ref().unwrap(),
+            b.recipe_snapshot.as_ref().unwrap()
+        );
+        back.verify_content_hash().unwrap();
+
+        // 篡改快照任意内容 → 全包哈希失配（负验证：包级防篡改自动覆盖新字段）
+        let mut tampered = back.clone();
+        if let Some(snap) = tampered.recipe_snapshot.as_mut() {
+            snap.recipe["retrieval"]["candidates"] = serde_json::json!(999);
+        }
+        assert!(matches!(
+            tampered.verify_content_hash(),
+            Err(BundleError::ContentHashMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn test_recipe_snapshot_old_reader_compatibility() {
+        // 旧格式 JSON（无 recipe_snapshot 字段）→ serde(default) 缺省 None，零迁移回归
+        let mut b = exported_bundle();
+        b.recipe_snapshot = Some(sample_recipe_snapshot());
+        resign(&mut b);
+        let json = serde_json::to_string(&b).unwrap();
+        let mut v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        v.as_object_mut().unwrap().remove("recipe_snapshot");
+        let legacy_json = serde_json::to_string(&v).unwrap();
+        let back: DatasetBundle = serde_json::from_str(&legacy_json).unwrap();
+        assert!(back.recipe_snapshot.is_none());
+        // 内容与旧格式等价（快照外的字段完整保留）
+        assert_eq!(back.entries.len(), b.entries.len());
+    }
+
+    #[test]
+    fn test_recipe_snapshot_trim_view_carries_and_rehashes() {
+        // 裁剪视图：build_view 整体克隆自动随行快照 + 审计重算覆盖快照
+        let mut b = exported_bundle();
+        b.recipe_snapshot = Some(sample_recipe_snapshot());
+        resign(&mut b);
+        let view =
+            BundleTrimmer::trim_by_ids(&b, &["entry-tax-001".into()], "tester", "t2").unwrap();
+        assert!(view.recipe_snapshot.is_some());
+        view.verify_content_hash().unwrap();
+        // 视图篡改快照同样红
+        let mut tampered = view;
+        if let Some(snap) = tampered.recipe_snapshot.as_mut() {
+            snap.recipe_version = "memory-v9.9".into();
+        }
+        assert!(matches!(
+            tampered.verify_content_hash(),
+            Err(BundleError::ContentHashMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn test_recipe_snapshot_importer_treats_as_opaque() {
+        // 导入链：含快照包照常通过 5 步校验（契约层 opaque，不做语义校验）
+        let mut b = exported_bundle();
+        b.recipe_snapshot = Some(sample_recipe_snapshot());
+        resign(&mut b);
+        let r = BundleImporter::validate(&b, &no_resolver).unwrap();
+        assert_eq!(r.verdict, TestVerdict::Pass);
     }
 }
