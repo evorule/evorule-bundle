@@ -5,6 +5,19 @@
 
 本文件记录 evorule-bundle 的显著变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.6.0] - 2026-10-12
+
+### 变更
+
+- **`TestVerdict` 缺省值从 Pass 改为 Fail（fail-closed，行为收紧）**：`#[default]` 移至 Fail——Rust 缺省构造（`BundleTests::default()`）与 serde 反序列化缺 `verdict` 字段的 JSON 全路径返回 Fail。与 `BundleTests::unverified()` 既有 T0 决策（「未跑真实沙箱验证的导出不得默认 Pass」）对齐，消除 derive(Default) 对该决策的墙角
+- **迁移指引**：自 0.6.0 起，缺 `verdict` 字段的包在导入校验时被拒（`TestsNotPassed`）。产包工具须**显式写出 `verdict` 字段**；未跑沙箱验证的导出请用 `BundleTests::unverified()`（verdict=fail 如实标注，导入侧无背书要求）。判据：verdict=pass 的导入须携带 `sandbox:<沙盒ID>` 或 `human:<操作者>` 可追溯背书（闸门一既有要求，未变）
+- 新增防回归测试两条：缺省构造=Fail；缺 verdict 字段反序列化=Fail
+
+### 说明
+
+- 故意伪造路径（显式写 `"verdict":"pass"` + 伪造 `human:` 背书）**不因本版变化**——其把守在 sandbox: 背书深度校验与 human: 信任模型（独立追踪项），与本缺省值修复正交
+- 0.5.0–0.5.2 未在本文件留条目（存量遗漏，另行登记）；0.5.2 → 0.6.0 无其他代码变化
+
 ## [0.4.0] - 2026-09-27
 
 ### 新增

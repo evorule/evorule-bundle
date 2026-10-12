@@ -107,12 +107,16 @@ pub enum BundleError {
 }
 
 /// 沙箱验证结果（闸门一证据，既定设计决策）
+///
+/// 缺省值 = Fail（fail-closed）：未显式声明已验证即「未验证」。
+/// Rust 缺省构造与 serde 缺 verdict 字段反序列化全路径一致——
+/// 与 `unverified()` 的 T0 决策同向（不得默认 Pass）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TestVerdict {
     #[default]
-    Pass,
     Fail,
+    Pass,
 }
 
 impl fmt::Display for TestVerdict {
@@ -1110,6 +1114,23 @@ mod tests {
         resign(&mut b);
         let err = BundleImporter::validate(&b, &no_resolver).unwrap_err();
         assert!(matches!(err, BundleError::TestsNotPassed { .. }));
+    }
+
+    #[test]
+    fn test_verdict_default_is_fail_fail_closed() {
+        // 防回归（T0 决策）：缺省构造必须 fail-closed——未显式声明已验证
+        // 即「未验证」，derive(Default) 不得给 Pass。
+        assert_eq!(TestVerdict::default(), TestVerdict::Fail);
+        assert_eq!(BundleTests::default().verdict, TestVerdict::Fail);
+    }
+
+    #[test]
+    fn test_missing_verdict_field_deserializes_as_fail() {
+        // 防回归：serde 缺 verdict 字段的 JSON 反序列化为 Fail（不得静默
+        // 升级 pass）。缺字段旧包 → Fail → 导入侧 TestsNotPassed 拒收。
+        let v = serde_json::json!({"subset": ["sandbox:1"], "fixtures": []});
+        let t: BundleTests = serde_json::from_value(v).unwrap();
+        assert_eq!(t.verdict, TestVerdict::Fail);
     }
 
     #[test]
