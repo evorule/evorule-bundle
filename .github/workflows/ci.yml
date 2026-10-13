@@ -58,3 +58,55 @@ jobs:
 
       - name: 公开面矩阵扫描 (AI 身份 + 内部编号阻断)
         run: python3 scripts/scan_public_face.py --fail-on A1 --fail-on B
+
+  # ==========================================================================
+  # cross-repo-gates：跨仓门禁（integration-tests 纳入 CI 常规跑批）
+  # 检出兄弟仓平级布局——integration-tests 的 path 依赖 ../evorule-hash、
+  # ../evorule-context-inspector 解析所需；inspector 自身的传递依赖
+  # ../evorule/evorule-{reactor,governance,tcb} 由核心仓整体检出提供
+  # （冻结仓代码以目录形态位于核心仓内）。
+  # 三闸：blake3_gate（hash 字节级等价 + bundle 消费契约）、
+  #       context_chain_gate（inspector 独立审计链）、
+  #       server_hash_gate（server 会话锚黄金向量，Python 独立复算对照）。
+  # bundle 结构字段演进（增字段/改 serde 形态）时，本 job 即刻暴露
+  # integration-tests 的初始化器漂移，不再依赖人工回归。
+  # ==========================================================================
+  cross-repo-gates:
+    name: cross-repo gates (integration-tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 检出 evorule-hash
+        uses: actions/checkout@v4
+        with:
+          repository: evorule/evorule-hash
+          path: evorule-hash
+
+      - name: 检出 evorule-context-inspector
+        uses: actions/checkout@v4
+        with:
+          repository: evorule/evorule-context-inspector
+          path: evorule-context-inspector
+
+      - name: 检出 evorule-integration-tests
+        uses: actions/checkout@v4
+        with:
+          repository: evorule/evorule-integration-tests
+          path: evorule-integration-tests
+
+      - name: 检出核心仓（inspector 传递依赖 evorule/{reactor,governance,tcb}）
+        uses: actions/checkout@v4
+        with:
+          repository: evorule/evorule
+          path: evorule
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: evorule-integration-tests
+
+      - name: 跑跨仓门禁三闸
+        working-directory: evorule-integration-tests
+        run: cargo test
