@@ -75,7 +75,13 @@ jobs:
     name: cross-repo gates (integration-tests)
     runs-on: ubuntu-latest
     steps:
+      # 自仓检出落 evorule-bundle/ 子目录——integration-tests 的 path 依赖
+      # `../evorule-bundle`（bundle 消费契约闸）要求六仓平级布局；
+      # 自仓在根目录时该依赖不可解析，且 integration-tests 会被父级
+      # bundle workspace 吸附报 "believes it's in a workspace"。
       - uses: actions/checkout@v4
+        with:
+          path: evorule-bundle
 
       - name: 检出 evorule-hash
         uses: actions/checkout@v4
