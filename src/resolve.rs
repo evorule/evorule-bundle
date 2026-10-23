@@ -6,7 +6,9 @@
 //! - **边界（不静默降级）**：T 无生效版本 → 显式报错，不静默用旧版本。
 //!
 //! 输入说明（设计文档 §5）：本模块是纯函数，每主版本的生效范围 `EffectiveRange` 由调用方提供
-//! —— 来源：历史批次 `dataset_versions` 快照表（effective_from/to 索引）或历史批次快照包内嵌配置。
+//! —— 实际数据来源是数据集元数据里的 `law_ref.effective_from/effective_to`（及条目
+//! `provenance.effective_from/effective_to`），**不是** `dataset_versions` 表（该表只存
+//! `entry_hash`，不含生效期字段）。
 //!
 //! SSOT：版本解析唯一来源在本 crate（evorule-bundle），evorule-rule 侧 re-export。
 

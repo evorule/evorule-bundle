@@ -131,10 +131,13 @@ impl fmt::Display for TestVerdict {
 /// 测试证据（设计文档 §2：测试用例 + 沙箱验证结果随包携带，导入侧可复核）
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct BundleTests {
-    /// 测试用例引用
+    /// 测试用例引用。契约 crate 对其格式不做任何约束；治理侧导出闸另有约定
+    /// （verdict=pass 时每项须以 `sandbox:` 前缀标识沙箱背书），该前缀校验在
+    /// 治理/执行侧完成，本 crate 不校验、也不理解此前缀。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subset: Vec<String>,
-    /// 夹具引用
+    /// 夹具引用。预留字段：当前契约 crate 与治理域均无读取点，仅为包格式
+    /// 向前兼容保留；写入方不应假设消费方存在。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fixtures: Vec<String>,
     /// 沙箱验证结果（pass 才能导入）
