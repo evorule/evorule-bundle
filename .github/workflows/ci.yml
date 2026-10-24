@@ -60,6 +60,21 @@ jobs:
         run: python3 scripts/scan_public_face.py --fail-on A1 --fail-on B
 
   # ==========================================================================
+  # hash-bypass-scan：哈希口径反绕行棘轮扫描 (B 族 blocking)。
+  # 只准经 evorule-hash 单一真相源做 BLAKE3 内容哈希——拦截私接 blake3
+  # 直连依赖（含 [patch] 换源）与源码私写哈希路径两类旁路；
+  # baseline 存量冻结、新增即红（与 public-face-scan 棘轮同型）。
+  # ==========================================================================
+  hash-bypass-scan:
+    name: hash bypass scan (B blocking)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 哈希口径反绕行棘轮扫描
+        run: python3 scripts/hash_bypass_scan.py --ratchet scripts/hash-bypass-baseline.txt
+
+  # ==========================================================================
   # cross-repo-gates：跨仓门禁（integration-tests 纳入 CI 常规跑批）
   # 检出兄弟仓平级布局——integration-tests 的 path 依赖 ../evorule-hash、
   # ../evorule-context-inspector 解析所需；inspector 自身的传递依赖
@@ -106,6 +121,20 @@ jobs:
         with:
           repository: evorule/evorule
           path: evorule
+
+      - name: 检出 evorule-rule（version_gate 版本一致性闸）
+        uses: actions/checkout@v4
+        with:
+          repository: evorule/evorule-rule
+          path: evorule-rule
+          fetch-depth: 1
+
+      - name: 检出 evorule-server（version_gate 版本一致性闸）
+        uses: actions/checkout@v4
+        with:
+          repository: evorule/evorule-server
+          path: evorule-server
+          fetch-depth: 1
 
       - uses: dtolnay/rust-toolchain@stable
 
