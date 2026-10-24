@@ -8,10 +8,12 @@ use serde_json::Value;
 
 /// 判断 service_name 是否为动态引用（运行时从 `__exec__.instruction.params.*` 解析）。
 ///
-/// 动态引用 = 以 `__` 系统前缀开头或含 `.` 的路径串（非字面量服务名，如
-/// `__exec__.instruction.params.service_name` / `__exec__.instruction.params.sampling_service`）。
+/// 动态引用 = 以 `__` 系统前缀开头的路径串（如
+/// `__exec__.instruction.params.service_name`）。不含 `__` 前缀的名称一律视为
+/// 字面量服务名——此前「含 `.` 即动态」的宽判会把带点的字面量服务名（如
+/// 反向域名风格 `com.example.payroll`）误判为动态而跳过符号一致性校验。
 fn is_dynamic_service_ref(name: &str) -> bool {
-    name.starts_with("__") || name.contains('.')
+    name.starts_with("__")
 }
 
 /// 递归收集 rule_body 中所有 `type=io_request` 步骤的 `params.service_name`。
@@ -133,6 +135,15 @@ mod tests {
 
         assert!(!has_dynamic_service_ref(&json!({"rule_id": "r1"})));
         assert!(!has_dynamic_service_ref(&json!({"transform": []})));
+
+        // 带点字面量服务名：不构成动态引用（点号误判回归锚）
+        let dotted = json!({
+            "transform": [
+                { "type": "io_request", "params": { "service_name": "com.example.payroll" } }
+            ]
+        });
+        assert!(!has_dynamic_service_ref(&dotted));
+        assert_eq!(io_services_from_rule_body(&dotted), vec!["com.example.payroll"]);
     }
 
     #[test]
