@@ -143,7 +143,10 @@ mod tests {
             ]
         });
         assert!(!has_dynamic_service_ref(&dotted));
-        assert_eq!(io_services_from_rule_body(&dotted), vec!["com.example.payroll"]);
+        assert_eq!(
+            io_services_from_rule_body(&dotted),
+            vec!["com.example.payroll"]
+        );
     }
 
     #[test]
