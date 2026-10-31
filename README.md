@@ -4,117 +4,84 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
 
   This file is part of EvoRule. Code is licensed under AGPL-3.0-or-later;
-  see the 许可证 section below for dual-license and historical notes
+  see the License section below for dual-license and historical notes
   (v0.2.1–v0.3.0 briefly used Apache-2.0, reverted to AGPL-3.0-or-later as of v0.3.1).
 -->
 
-# evorule-bundle
+# evorule-bundle
 
-> **仓库角色**：本仓库是 **GitHub 镜像**。权威源（primary repo）在 **Gitee**：[https://gitee.com/evorule/evorule-bundle](https://gitee.com/evorule/evorule-bundle)。
-> Issue / PR 请提交到 Gitee，GitHub 侧仅供镜像与推广展示。
+Snapshot sharing and verification crate: the single transfer contract between the governance side (evorule-rule) and the execution side (evorule-server) — a pure library with no binary, no service, and no I/O.
 
+[![CI][badge-ci]][ci-link]
+[![crates.io][badge-crate]][crate-link]
+[![docs.rs][badge-docs]][docs-link]
+[![License: AGPL-3.0-or-later][badge-license]][license-link]
 
-[![CI](https://github.com/evorule/evorule-bundle/actions/workflows/ci.yml/badge.svg)](https://github.com/evorule/evorule-bundle/actions/workflows/ci.yml)
+**License**: [AGPL-3.0-or-later](LICENSE) with [dual licensing](DUAL_LICENSE.md)
 
-**EvoRule 快照包共享校验 crate — 治理侧 ↔ 执行侧解耦的唯一传输契约**
+Part of the [evorule](https://github.com/evorule/evorule) ecosystem. The `DatasetBundle` snapshot type, the six-item import validation chain, the trimmer, and the version / dependency / provenance models live here as a single source of truth: when both sides held their own copies, validation verdicts and serialization contracts drifted. Here any semantic change takes effect once, and both consumers depend on it pinned by version.
 
-> 纯 lib，无 bin / 无服务 / 无 I/O。承载 `DatasetBundle`（快照包）类型、6 项导入校验链、
-> 裁剪（Trimmer）与版本/解析/依赖/溯源模型，作为治理库（evorule-rule）与执行引擎（evorule-server）
-> 之间的**单一事实来源（SSOT）**。
+## Features
 
----
+- **`DatasetBundle` (snapshot package)** — the only transfer form between asset governance and execution: a single-file, read-only JSON artifact
+- **Six-item validation chain** (`BundleImporter::validate`; explicit errors, never silent degradation): schema version → tamper-evident content hash (BLAKE3 via evorule-hash, `blake3:`-prefixed) → version-chain integrity → symbol three-way agreement (`rule_body` ≡ entry dependencies ≡ data dependencies) → version resolution (pinned / auto by effective date) → gate-one evidence (verdict = pass before import)
+- **Trimming** (`BundleTrimmer`) — a trim is a view of the original version; it never mints a new version chain, and dependency declarations shrink with the trim
+- **Model SSOT** — versioning (`Version` / `Versioning` / `VersionSelection` / `LawRef`), resolution (`VersionResolver`), dependencies (`DataDependencies` / `SourceBinding` / `IoContract` / `InputDecl`), provenance (`Provenance`), and symbol extraction (`io_services_from_rule_body`)
+- **Zero translation** — `entries[].rule_body` ships as-is: it is exactly the evorule-server executable rule JSON
 
-## 为什么需要这个仓（SSOT）
+> Export (`BundleExporter`) depends on governance-side types and stays in evorule-rule; this crate carries only the snapshot package's self-contained validation.
 
-同一事实多处重复定义必然漂移。快照包类型与 6 项校验链若在治理侧与执行侧**各持一份实现**，会导致：
-
-- 校验口径不一致 → 治理侧导出的包，执行侧可能拒绝或静默放过；
-- 版本/依赖/溯源模型漂移 → 序列化契约破裂。
-
-因此迁入独立仓 `evorule-bundle`，两仓以**钉版依赖**消费；任何校验语义变更都在此仓一次生效。
-
-## 在 EvoRule 生态中的位置
-
-| 仓 | 角色 | 当前状态 |
-|---|---|---|
-| [evorule](https://gitee.com/evorule/evorule) | 基础仓（TCB + Reactor + Governance + CLI） | v0.3.2（已发布） |
-| [evorule-rule](https://gitee.com/evorule/evorule-rule) | 数据治理扩展（规则资产库 + HTTP API） | v0.2.0 |
-| **evorule-bundle**（本仓） | 快照包共享校验（纯 lib） | **v0.3.1** |
-| [evorule-server](https://gitee.com/evorule/evorule-server) | 执行侧 HTTP server（消费本仓校验） | v0.3.2（T2/T3 已落地：bundle 导入校验 + 原子落盘） |
-
-## 提供的能力
-
-- **`DatasetBundle`（快照包）**：资产 ↔ 执行解耦的唯一传输形态（单文件 JSON，只读产物）。
-- **6 项导入校验链**（`BundleImporter::validate`，失败显式报错，不静默降级）：
-  1. schema 版本；
-  2. 全包防篡改哈希（BLAKE3，经 evorule-hash，`blake3:` 前缀）；
-  3. 版本链完整性；
-  4. 符号三方一致（rule_body ≡ 条目 dependencies ≡ data_dependencies）；
-  5. 版本解析（pinned / auto_by_effective_date）；
-  6. 闸门一证据（verdict=pass 才能导入）。
-- **裁剪**（`BundleTrimmer`）：裁剪 = 原版本视图，**不新造版本链**；依赖声明随裁剪收缩。
-- **模型 SSOT**：版本（`Version/Versioning/VersionSelection/LawRef`）、解析（`VersionResolver`）、
-  依赖（`DataDependencies/SourceBinding/ServiceTemplate/IoContract/InputDecl`）、溯源（`Provenance`）、
-  符号提取（`io_services_from_rule_body`）。
-- **零转译**：`entries[].rule_body` 原样 = evorule-server 可执行规则 JSON。
-
-> 导出（`BundleExporter`）依赖治理侧 `RuleDataset/RuleEntry`，留在 evorule-rule；
-> 本仓只承载快照包**自洽校验**（类型 + `BundleImporter` + `BundleTrimmer`）。
-
-## 模块结构
-
-```
-src/
-├── lib.rs          # 模块声明 + pub use 重导出
-├── bundle.rs       # DatasetBundle + BundleError + TestVerdict + BundleTests + ViewRef +
-│                   #   BundleDatasetMeta/BundleEntry/BundleAudit +
-│                   #   compute_content_hash/verify_content_hash +
-│                   #   BundleImporter::validate + BundleTrimmer
-├── version.rs      # Version/VersionError/VersionSelection/VersionSelectionMode/Versioning/LawRef
-├── resolve.rs      # VersionResolver/ResolveError/EffectiveRange
-├── dependency.rs   # DataDependencies/ServiceDecl/SourceBinding/ServiceTemplate/IoContract/InputDecl
-├── provenance.rs   # Provenance
-├── structure.rs    # 轻量结构门禁（元指令白名单 5 种，SSOT 对齐 TCB dispatch；__io_results__ 单数 / 路径语法）
-└── symbols.rs      # io_services_from_rule_body
-```
-
-## 使用（作为依赖）
+## Installation
 
 ```toml
 [dependencies]
-evorule-bundle = "0.3.1"
+evorule-bundle = "0.6"
+```
 
-# 本地开发：用 path 覆盖 crates.io 上的 evorule-bundle（与 evorule-server 钉核心 crates 同模式）
+For cross-repo joint development, override the registry line with a local path (the same pattern the server uses for its pinned core crates):
+
+```toml
 [patch.crates-io]
 evorule-bundle = { path = "../evorule-bundle" }
 ```
 
-## 当前状态（2026-08-24 开仓）
+## Usage
 
-- **版本**：v0.3.1 — 类型 + 6 项校验链 + 裁剪 + 5 类模型迁入完成
-- **测试**：47 passed，0 failed（`cargo test --lib`，含 structure.rs 结构门禁 12 项）
-- **依赖**：serde / serde_json / thiserror / evorule-hash（纯校验，无网络 / 无存储 / 无 I/O）
-- **钉版约定**：语义版本独立发布；`validate` 被两仓共用 → API 变更即 MAJOR，两仓需同步升级 tag
-- **解析现状**：evorule-rule 与 evorule-server 均已通过 `[patch.crates-io]` 指向本仓本地源，
-  两侧校验口径强对称；本地改动随提交即刻对两侧生效，发布 crates.io 后同步升级版本需求
+```rust
+use evorule_bundle::{BundleImporter, DatasetBundle};
 
-## 许可证
+let bundle: DatasetBundle = serde_json::from_str(&bundle_json)?;
 
-**AGPL-3.0-or-later**（依据 DEC-2026-001 D-001-10 统一：治理一致性优先）。本仓采用 EvoRule 双许可架构：闭源使用见 [DUAL_LICENSE.md](DUAL_LICENSE.md) / [FREE_COMMERCIAL_LICENSE.md](FREE_COMMERCIAL_LICENSE.md)（合格实体免费豁免）/ [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)（付费）。`core_eval.json` 宪法为 **CC0-1.0**。商业许可咨询：evorulelab@gmail.com。
+// The host injects the domain schema resolver (Knowledge entries are validated
+// against the resolved schema); an unregistered schema_ref is rejected fail-fast.
+let registry: std::collections::HashMap<String, serde_json::Value> = load_registry();
+let result = BundleImporter::validate(&bundle, &|uri| registry.get(uri).cloned())?;
 
-> 历史说明：v0.2.0 曾以 AGPL 发布，v0.2.1–v0.3.0 短暂以 Apache-2.0 发布，自 v0.3.1 起依前述统一裁定**回归 AGPL-3.0-or-later**。已发布的旧版本仍按原许可（crates.io 已发布版本许可不可改），本变更仅对新版本生效，已下载副本不受影响；消费方钉版时注意许可口径。
+println!("{result:?}"); // bundle_id, resolved_version, entry_count, verdict
+```
 
-本许可授予代码使用权，不授予 EvoRule 名称与商标的使用权。
+## Versioning & Compatibility
 
-商业许可另议：evorulelab@gmail.com
+- `validate` is consumed by both evorule-rule and evorule-server; any change to validation semantics is a breaking change and ships as a MAJOR release, with both consumers upgrading in lockstep
+- Consumers depend on a pinned version requirement; the latest published release is tracked by the crates.io badge above
 
-## 联系方式
+## Documentation
 
-- **Gitee**：<https://gitee.com/evorule/evorule-bundle>
-- **Gitee 父仓**：<https://gitee.com/evorule/evorule>
-- **邮箱**：evorulelab@gmail.com
-- **组织**：EvoRule
+API reference: [docs.rs/evorule-bundle](https://docs.rs/evorule-bundle)
 
----
+## License
 
-_本仓是 EvoRule 生态的快照包契约。规则不言语，它们只运行。我们是首批见证者。_
+**AGPL-3.0-or-later** (unified across the ecosystem). Dual licensing applies: closed-source use — see [DUAL_LICENSE.md](DUAL_LICENSE.md), [FREE_COMMERCIAL_LICENSE.md](FREE_COMMERCIAL_LICENSE.md) (free waiver for eligible entities), or [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md). The constitution `core_eval.json` is CC0-1.0. Commercial inquiries: <evorulelab@gmail.com>.
+
+> History: v0.2.0 shipped as AGPL, v0.2.1–v0.3.0 briefly as Apache-2.0; from v0.3.1 the crate is back on AGPL-3.0-or-later. Already-published versions keep their original license (published crates.io versions cannot be relicensed) — consumers pinning old versions should check the license of the pinned release.
+
+This license grants the right to use the code, not the EvoRule name or trademark.
+
+[badge-ci]: https://github.com/evorule/evorule-bundle/actions/workflows/ci.yml/badge.svg
+[ci-link]: https://github.com/evorule/evorule-bundle/actions/workflows/ci.yml
+[badge-crate]: https://img.shields.io/crates/v/evorule-bundle?style=flat-square
+[crate-link]: https://crates.io/crates/evorule-bundle
+[badge-docs]: https://img.shields.io/docsrs/evorule-bundle?style=flat-square
+[docs-link]: https://docs.rs/evorule-bundle
+[badge-license]: https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?style=flat-square
+[license-link]: LICENSE
