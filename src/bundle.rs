@@ -336,6 +336,19 @@ pub struct RecipeSnapshot {
     pub snapshot_at: String,
 }
 
+/// 发布签名块（可选——来源认证面；缺省不序列化，字节兼容既有包）
+///
+/// 签名载荷 = `audit.content_hash` 的 64-hex 字符串 UTF-8 字节（运输稳定：
+/// 接收方从收到的包重算 content hash 即可验签，无需依赖传输字节形态）。
+/// 验签公钥经消费方信任注册表按 `key_id` 查得（ed25519，32 字节公钥）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SignatureBlock {
+    /// 签名者公钥标识（64 hex = ed25519 公钥字节，自描述形态）
+    pub key_id: String,
+    /// ed25519 签名（128 hex = 64 字节）
+    pub sig: String,
+}
+
 /// 快照包（单文件 JSON，设计文档 §2）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DatasetBundle {
@@ -353,15 +366,21 @@ pub struct DatasetBundle {
     pub recipe_snapshot: Option<RecipeSnapshot>,
     pub tests: BundleTests,
     pub audit: BundleAudit,
+    /// 发布签名（可选——缺省不序列化，字节兼容既有包；内容哈希计算排除本字段，
+    /// 签名载荷为 content hash 字符串，不产生自指）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publish_signature: Option<SignatureBlock>,
 }
 
 impl DatasetBundle {
-    /// 全包内容哈希（blake3:hex）：对排除 `audit.content_hash` 本身的规范化 JSON 计算。
+    /// 全包内容哈希（blake3:hex）：对排除 `audit.content_hash` 与
+    /// `publish_signature` 本身的规范化 JSON 计算。
     /// 序列化字段顺序固定（struct 声明序）+ Value 键有序（serde_json 默认 BTreeMap）→ 确定性。
     /// 算法统一为 BLAKE3（blake3 crate），与 evorule-reactor 审计链同源，跨仓字节一致。
     pub fn compute_content_hash(&self) -> String {
         let mut canonical = self.clone();
         canonical.audit.content_hash.clear();
+        canonical.publish_signature = None;
         evorule_hash::prefixed(&evorule_hash::json_digest(&canonical))
     }
 
@@ -837,6 +856,7 @@ mod tests {
                 content_hash: String::new(),
                 hash_algo: "blake3".into(),
             },
+            publish_signature: None,
         }
     }
 
@@ -1569,5 +1589,55 @@ mod tests {
         resign(&mut b);
         let r = BundleImporter::validate(&b, &no_resolver).unwrap();
         assert_eq!(r.verdict, TestVerdict::Pass);
+    }
+
+    /// 签名字段排除在内容哈希之外：带签名与不带签名内容哈希一致（防自指），
+    /// 且签名字段的任何改动不影响内容哈希（签名自身完整性由验签面保证）
+    #[test]
+    fn signature_field_is_excluded_from_content_hash() {
+        let mut b = bundle_with_entries(vec![]);
+        b.audit.content_hash = b.compute_content_hash();
+        let base = b.compute_content_hash();
+        b.publish_signature = Some(SignatureBlock {
+            key_id: "a".repeat(64),
+            sig: "b".repeat(128),
+        });
+        assert_eq!(b.compute_content_hash(), base, "签名字段不参与内容哈希");
+        b.publish_signature = Some(SignatureBlock {
+            key_id: "c".repeat(64),
+            sig: "d".repeat(128),
+        });
+        assert_eq!(b.compute_content_hash(), base);
+    }
+
+    /// 带签名的包序列化往返保真（字段+值无损）
+    #[test]
+    fn signed_bundle_roundtrips() {
+        let mut b = bundle_with_entries(vec![]);
+        b.audit.content_hash = b.compute_content_hash();
+        b.publish_signature = Some(SignatureBlock {
+            key_id: "ab".repeat(32),
+            sig: "cd".repeat(64),
+        });
+        let json = serde_json::to_string(&b).unwrap();
+        assert!(json.contains("publish_signature"));
+        let parsed: DatasetBundle = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            parsed.publish_signature.as_ref().unwrap().key_id,
+            "ab".repeat(32)
+        );
+        assert_eq!(parsed, b);
+    }
+
+    /// 旧形态包（无 publish_signature 字段）反序列化 → None（零迁移兼容）
+    #[test]
+    fn legacy_bundle_without_signature_deserializes() {
+        let mut b = bundle_with_entries(vec![]);
+        b.audit.content_hash = b.compute_content_hash();
+        let json = serde_json::to_string(&b).unwrap();
+        assert!(!json.contains("publish_signature"), "None 不序列化");
+        let parsed: DatasetBundle = serde_json::from_str(&json).unwrap();
+        assert!(parsed.publish_signature.is_none());
+        assert_eq!(parsed, b);
     }
 }
