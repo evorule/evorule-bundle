@@ -5,8 +5,8 @@ edition = "2021"
 description = "EvoRule snapshot bundle (DatasetBundle) self-contained validation — shared by governance (evorule-rule) and execution (evorule-server)"
 license = "AGPL-3.0-or-later"
 rust-version = "1.74"
-repository = "https://gitee.com/evorule/evorule-bundle"
-homepage = "https://gitee.com/evorule/evorule-bundle"
+repository = "https://github.com/evorule/evorule-bundle"
+homepage = "https://github.com/evorule/evorule-bundle"
 readme = "README.md"
 
 # 纯 lib：无 bin / 无服务 / 无 I/O。快照包自洽校验 + 版本模型 + 依赖/溯源模型（SSOT 单一来源）

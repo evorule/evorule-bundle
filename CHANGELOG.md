@@ -67,6 +67,6 @@
 - 测试 47 passed / 0 failed（`cargo test --lib`）
 - 依赖：serde / serde_json / thiserror / evorule-hash（纯校验，无网络 / 无存储 / 无 I/O）
 
-[Unreleased]: https://gitee.com/evorule/evorule-bundle/compare/v0.2.0...HEAD
-[0.2.1]: https://gitee.com/evorule/evorule-bundle/compare/v0.2.0...v0.2.1
-[0.2.0]: https://gitee.com/evorule/evorule-bundle/releases/tag/v0.2.0
+[Unreleased]: https://github.com/evorule/evorule-bundle/compare/v0.2.0...HEAD
+[0.2.1]: https://github.com/evorule/evorule-bundle/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/evorule/evorule-bundle/releases/tag/v0.2.0

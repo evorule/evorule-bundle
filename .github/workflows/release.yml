@@ -4,7 +4,6 @@
 #
 # 触发: 推送 v* tag。纯 lib crate,无二进制产物——
 # Release 内容 = 测试验证 + GitHub Release(tag 注记)。
-# gitee 侧 Release 由 gitee 自动链提供源码包,无需额外回传。
 name: Release
 
 on:
