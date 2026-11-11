@@ -6,6 +6,7 @@
     "name": "Demo Law Set",
     "tenant_id": "tenant-demo",
     "instance_id": "instance-demo",
+    "dataset_kind": "law_set",
     "versioning": {
       "current": "v2",
       "chain": [
@@ -69,7 +70,7 @@
     "exported_at": "2026-11-11T00:00:00Z",
     "exported_by": "contract-golden",
     "source_version": "v2",
-    "content_hash": "blake3:a7e5c826b3c1e7768845c436069d9694d3ffdeb7643b25d354df811347526e07",
+    "content_hash": "blake3:6efe718358bb7578f27854714ed127ebcbda0ba79272d6bdb21a4450c0dd209e",
     "hash_algo": "blake3"
   }
 }

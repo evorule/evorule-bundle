@@ -35,8 +35,9 @@ pub const BUNDLE_MANIFEST_FILE: &str = "bundle_manifest.json";
 
 pub use bundle::{
     BundleAudit, BundleDatasetMeta, BundleEntry, BundleError, BundleImporter, BundleTests,
-    BundleTrimmer, DatasetBundle, DomainSchemaResolver, EntryFilter, EntryKind, ExecutionContract,
-    ImportResult, RecipeSnapshot, SignatureBlock, TestVerdict, ViewRef, BUNDLE_SCHEMA_VERSION,
+    BundleTrimmer, DatasetBundle, DatasetKind, DomainSchemaResolver, EntryFilter, EntryKind,
+    ExecutionContract, ImportResult, RecipeSnapshot, SignatureBlock, TestVerdict, ViewRef,
+    BUNDLE_SCHEMA_VERSION,
 };
 pub use contract::CONTRACT_GOLDEN;
 pub use dependency::{

@@ -16,8 +16,9 @@
 //! wire contract changed — see `src/contract.rs` change discipline.
 
 use evorule_bundle::{
-    BundleAudit, BundleDatasetMeta, BundleEntry, BundleTests, DatasetBundle, EntryKind, LawRef,
-    Provenance, TestVerdict, VersionSelection, VersionSelectionMode, Versioning, CONTRACT_GOLDEN,
+    BundleAudit, BundleDatasetMeta, BundleEntry, BundleTests, DatasetBundle, DatasetKind,
+    EntryKind, LawRef, Provenance, TestVerdict, VersionSelection, VersionSelectionMode,
+    Versioning, CONTRACT_GOLDEN,
 };
 
 /// The golden bundle, constructed from crate types only (no serde of the
@@ -32,6 +33,7 @@ fn golden_bundle() -> DatasetBundle {
             name: "Demo Law Set".into(),
             tenant_id: "tenant-demo".into(),
             instance_id: "instance-demo".into(),
+            dataset_kind: DatasetKind::LawSet,
             versioning: Versioning {
                 current: "v2".into(),
                 chain: vec!["v1".into(), "v2".into()],
@@ -131,6 +133,14 @@ fn golden_satisfies_law_host_consumption_pointers() {
             .and_then(|v| v.as_str()),
         Some("v2"),
         "dataset.versioning.current must anchor the dataset version"
+    );
+    assert_eq!(
+        parsed
+            .pointer("/dataset/dataset_kind")
+            .and_then(|v| v.as_str()),
+        Some("law_set"),
+        "dataset.dataset_kind must carry the distribution-face discriminator \
+         (law_host real-kind detection, schema_ref prefix is fallback only)"
     );
     let entries = parsed
         .get("entries")
