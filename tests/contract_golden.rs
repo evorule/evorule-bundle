@@ -17,8 +17,8 @@
 
 use evorule_bundle::{
     BundleAudit, BundleDatasetMeta, BundleEntry, BundleTests, DatasetBundle, DatasetKind,
-    EntryKind, LawRef, Provenance, TestVerdict, VersionSelection, VersionSelectionMode,
-    Versioning, CONTRACT_GOLDEN,
+    EntryKind, LawRef, Provenance, TestVerdict, VersionSelection, VersionSelectionMode, Versioning,
+    CONTRACT_GOLDEN,
 };
 
 /// The golden bundle, constructed from crate types only (no serde of the
