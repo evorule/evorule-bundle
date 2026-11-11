@@ -164,6 +164,38 @@ pub struct ViewRef {
     pub view_of_version: String,
 }
 
+/// 数据集类型（分布面判别字段：bundle 是唯一 pull 双认证分布端点，消费方
+/// 无须再以条目 `schema_ref` 前缀做归属代理判定）。
+///
+/// serde default = `RuleSet`：旧格式 bundle（无 dataset_kind 字段）反序列化
+/// 仍为规则数据集，向后兼容；新消费端应以本字段为归属主判定。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DatasetKind {
+    #[default]
+    RuleSet,
+    Knowledge,
+    LawSet,
+}
+
+impl DatasetKind {
+    /// 线上存储值（'rule_set' | 'knowledge' | 'law_set'；与治理侧 datasets
+    /// 表 dataset_kind 列同词汇表）。
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DatasetKind::RuleSet => "rule_set",
+            DatasetKind::Knowledge => "knowledge",
+            DatasetKind::LawSet => "law_set",
+        }
+    }
+}
+
+impl fmt::Display for DatasetKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// 快照包数据集元数据（设计文档 §2 dataset 段）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BundleDatasetMeta {
@@ -172,6 +204,9 @@ pub struct BundleDatasetMeta {
     pub tenant_id: String,
     /// 真实发布者身份（白标不掩盖，既定设计决策）
     pub instance_id: String,
+    /// 数据集类型（分布面归属判别；additive 字段，旧格式缺省 = rule_set）
+    #[serde(default)]
+    pub dataset_kind: DatasetKind,
     pub versioning: Versioning,
     /// 内嵌版本选择配置（既定设计决策），导入侧合并为运行配置
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -815,6 +850,7 @@ mod tests {
                 name: "2024 年度企业所得税合规规则集".into(),
                 tenant_id: "org-evorule".into(),
                 instance_id: "org-evorule".into(),
+                dataset_kind: DatasetKind::RuleSet,
                 versioning: Versioning::default(),
                 law_ref: Some(LawRef {
                     document_id: "gov-tax-2023-001".into(),

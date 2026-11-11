@@ -5,6 +5,17 @@
 
 本文件记录 evorule-bundle 的显著变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.8.0] - 2026-11-11
+
+### 新增
+
+- **`BundleDatasetMeta` 增 `dataset_kind` 判别字段（additive，向后兼容）**：bundle 是唯一 pull 双认证分布端点，此前不带数据集类型判别字段，消费方（evorule-server `law_host::load_remote`）被迫以条目 `schema_ref` 前缀做 law_set 归属代理判定。本版新增 `DatasetKind` 枚举（`rule_set`/`knowledge`/`law_set`，snake_case，与治理侧 datasets 表同词汇表），随包携带归属判别；旧消费端反序列化忽略未知字段不受影响，旧格式 bundle（缺字段）经 `#[serde(default)]` 读为 `rule_set`。契约 golden 已重锚（`dataset.dataset_kind = "law_set"` 进快照）
+- 新增消费指针断言：`/dataset/dataset_kind` 必须 = `"law_set"`（golden 为 law_set 形态快照包）
+
+### 迁移指引
+
+- 治理侧导出面（evorule-rule `BundleExporter`）随本版填充 `dataset_kind`；消费端（evorule-server law_host）自 0.8.0 起以 `dataset_kind` 为归属主判定，条目 `schema_ref` 前缀判定降级为兜底（保留一个版本周期后摘除）
+
 ## [0.6.0] - 2026-10-12
 
 ### 变更
