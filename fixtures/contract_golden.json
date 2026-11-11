@@ -1,0 +1,75 @@
+{
+  "bundle_schema_version": "1.0",
+  "bundle_id": "bundle-lawset-demo-v2",
+  "dataset": {
+    "dataset_id": "lawset-demo",
+    "name": "Demo Law Set",
+    "tenant_id": "tenant-demo",
+    "instance_id": "instance-demo",
+    "versioning": {
+      "current": "v2",
+      "chain": [
+        "v1",
+        "v2"
+      ]
+    },
+    "version_selection": {
+      "mode": "auto_by_effective_date"
+    },
+    "law_ref": {
+      "document_id": "gov-tax-2023-001",
+      "law_version": "2023",
+      "effective_from": "2024-01-01"
+    }
+  },
+  "entries": [
+    {
+      "entry_id": "law-0001",
+      "entry_kind": "knowledge",
+      "rule_body": {
+        "domains": [
+          "physical"
+        ],
+        "formula": "F = m * a",
+        "id": "newtons_second_law",
+        "max_version_depth": 1,
+        "monotone_form": true,
+        "si_units": {
+          "F": "N",
+          "a": "m s^-2",
+          "m": "kg"
+        },
+        "symbols": {
+          "F": "force",
+          "a": "acceleration",
+          "m": "mass"
+        }
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/law_set/law/v1.0.json",
+      "provenance": {
+        "source": "Newton's laws of motion",
+        "clause": "Law II",
+        "document_id": "gov-physics-principia",
+        "effective_from": "2024-01-01",
+        "last_verified": "2026-08-01",
+        "verified_by": "auditor-01"
+      },
+      "domain": "law_set",
+      "knowledge_kind": "fact",
+      "trust_level": "human"
+    }
+  ],
+  "tests": {
+    "subset": [
+      "sandbox:lawset-demo-laws"
+    ],
+    "verdict": "pass"
+  },
+  "audit": {
+    "exported_at": "2026-11-11T00:00:00Z",
+    "exported_by": "contract-golden",
+    "source_version": "v2",
+    "content_hash": "blake3:a7e5c826b3c1e7768845c436069d9694d3ffdeb7643b25d354df811347526e07",
+    "hash_algo": "blake3"
+  }
+}

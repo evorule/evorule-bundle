@@ -19,6 +19,7 @@
 //! 许可：AGPL-3.0-or-later（自 v0.3.1 起；历史版本曾以 Apache-2.0（v0.2.1–v0.3.0）与 AGPL-3.0-or-later（≤ v0.2.0）发布，crates.io 已发布版本许可不可改，消费方钉版时注意许可口径）
 
 pub mod bundle;
+pub mod contract;
 pub mod dependency;
 pub mod provenance;
 pub mod resolve;
@@ -37,6 +38,7 @@ pub use bundle::{
     BundleTrimmer, DatasetBundle, DomainSchemaResolver, EntryFilter, EntryKind, ExecutionContract,
     ImportResult, RecipeSnapshot, SignatureBlock, TestVerdict, ViewRef, BUNDLE_SCHEMA_VERSION,
 };
+pub use contract::CONTRACT_GOLDEN;
 pub use dependency::{
     DataDependencies, InputDecl, IoContract, ServiceDecl, ServiceTemplate, SourceBinding,
 };
